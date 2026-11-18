@@ -2,10 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_SCRIPT_URL,
+  PROFILE_LOGO_MAX_CHARS,
+  PROFILE_LOGO_MAX_PX,
+  PROFILE_LOGO_QUALITY,
   buildCacheBustedScriptUrl,
   buildGoogleAppsScriptCode,
   buildStandaloneHtml,
   buildWebAppManifest,
+  calculateContainedDimensions,
   computeProgressPercent,
   computeSeekTimeFromPercent,
   createDefaultHubData,
@@ -254,4 +258,24 @@ test('isNonEmptyCloudPayload rejects {} and empty values while sanitizeAndParseH
   assert.equal(cloudParsed.profileImage, 'https://cdn.example.com/logo.png');
   assert.equal(cloudParsed.iosConfig.appIcon, 'https://cdn.example.com/logo.png');
   assert.equal(cloudParsed.passcode, '5678');
+});
+
+test('calculateContainedDimensions caps profile logos to 180x180 and profileImage key round-trips identically', () => {
+  assert.equal(PROFILE_LOGO_MAX_PX, 180);
+  assert.equal(PROFILE_LOGO_QUALITY, 0.75);
+  assert.equal(PROFILE_LOGO_MAX_CHARS, 30000);
+
+  assert.deepEqual(calculateContainedDimensions(1200, 800, 180), { width: 180, height: 120 });
+  assert.deepEqual(calculateContainedDimensions(600, 1200, 180), { width: 90, height: 180 });
+  assert.deepEqual(calculateContainedDimensions(120, 100, 180), { width: 120, height: 100 });
+
+  const sampleData = {
+    ...createDefaultHubData(),
+    profileImage: 'data:image/webp;base64,UklGRkAAAABXRUJQVlA4',
+  };
+  const postedPayload = JSON.parse(JSON.stringify({ data: sampleData }));
+  assert.equal(postedPayload.data.profileImage, 'data:image/webp;base64,UklGRkAAAABXRUJQVlA4');
+  const hydrated = sanitizeAndParseHubData(postedPayload.data);
+  assert.ok(hydrated);
+  assert.equal(hydrated.profileImage, postedPayload.data.profileImage);
 });

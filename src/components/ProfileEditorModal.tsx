@@ -4,6 +4,9 @@ import type { HubData, ThemePalette } from '../types/hub';
 import {
   DEFAULT_AVATAR_SVG,
   PROFILE_FRAME_STYLES,
+  PROFILE_LOGO_MAX_CHARS,
+  PROFILE_LOGO_MAX_PX,
+  PROFILE_LOGO_QUALITY,
   type ProfileFrameId,
   extractUniqueCategories,
   formatProfileFrame,
@@ -56,7 +59,13 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
     setUploading(true);
     setError('');
     try {
-      const resized = await resizeImageToDataUrl(file, 400, 'png');
+      const resized = await resizeImageToDataUrl(
+        file,
+        PROFILE_LOGO_MAX_PX,
+        'webp',
+        PROFILE_LOGO_QUALITY,
+        PROFILE_LOGO_MAX_CHARS
+      );
       setProfileImage(resized);
     } catch {
       setError('ไม่สามารถอัปโหลดรูปโลโก้ได้');

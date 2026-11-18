@@ -9,6 +9,26 @@ export const DEFAULT_PASSCODE = '1234';
 export const DEFAULT_SCRIPT_URL = 'ใส่ลิงก์_WEB_APP_URL_ของคุณตรงนี้';
 export const STORAGE_DATA_KEY = 'pastel_link_hub_data_v1';
 export const STORAGE_SCRIPT_URL_KEY = 'pastel_link_hub_script_url_v1';
+export const PROFILE_LOGO_MAX_PX = 180;
+export const PROFILE_LOGO_QUALITY = 0.75;
+export const PROFILE_LOGO_MAX_CHARS = 30000;
+
+export function calculateContainedDimensions(
+  srcWidth: number,
+  srcHeight: number,
+  maxDimension: number = PROFILE_LOGO_MAX_PX
+): { width: number; height: number } {
+  const w = Math.max(1, Math.round(srcWidth));
+  const h = Math.max(1, Math.round(srcHeight));
+  const cap = Math.max(1, Math.round(maxDimension));
+  if (w <= cap && h <= cap) {
+    return { width: w, height: h };
+  }
+  if (w >= h) {
+    return { width: cap, height: Math.max(1, Math.round((h * cap) / w)) };
+  }
+  return { width: Math.max(1, Math.round((w * cap) / h)), height: cap };
+}
 
 export function isValidScriptUrl(url: string | null | undefined): boolean {
   const trimmed = (url || '').trim();

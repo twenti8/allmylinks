@@ -1,12 +1,22 @@
+import {
+  PROFILE_LOGO_MAX_CHARS,
+  PROFILE_LOGO_MAX_PX,
+  PROFILE_LOGO_QUALITY,
+  calculateContainedDimensions,
+} from './hubLogic';
+
 /**
- * Automatically resizes and compresses an uploaded image file so that its longest
- * side never exceeds `maxDimension` (default 400px for crisp iOS icons & profile logos),
- * keeping payloads lightweight for localStorage and Google Sheets storage.
+ * Resizes and compresses an uploaded image using HTMLCanvasElement so dimensions never exceed
+ * `maxDimension` (default 180x180px for profile logos) and encodes as WebP/JPEG at `quality`
+ * (default 0.75), stepping down quality if needed to stay under `maxChars` (default 30,000 chars)
+ * for Google Sheets cell limits.
  */
 export function resizeImageToDataUrl(
   file: File,
-  maxDimension = 400,
-  format: 'png' | 'webp' = 'webp'
+  maxDimension = PROFILE_LOGO_MAX_PX,
+  format: 'png' | 'webp' | 'jpeg' = 'webp',
+  quality = PROFILE_LOGO_QUALITY,
+  maxChars = PROFILE_LOGO_MAX_CHARS
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -15,39 +25,69 @@ export function resizeImageToDataUrl(
       const img = new Image();
       img.onerror = () => reject(new Error('ไฟล์รูปภาพไม่ถูกต้อง'));
       img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDimension || height > maxDimension) {
-          if (width >= height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
-        }
+        const { width, height } = calculateContainedDimensions(
+          img.width,
+          img.height,
+          maxDimension
+        );
 
         const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, width);
-        canvas.height = Math.max(1, height);
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           reject(new Error('ไม่สามารถประมวลผลรูปภาพได้'));
           return;
         }
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
         if (format === 'png') {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           resolve(canvas.toDataURL('image/png'));
           return;
         }
 
-        const webpUrl = canvas.toDataURL('image/webp', 0.86);
-        if (webpUrl.startsWith('data:image/webp')) {
-          resolve(webpUrl);
-        } else {
-          resolve(canvas.toDataURL('image/png'));
+        const encode = (mime: 'image/webp' | 'image/jpeg', q: number): string => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          if (mime === 'image/jpeg') {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL(mime, q);
+        };
+
+        const qualitySteps = Array.from(
+          new Set([quality, 0.65, 0.55, 0.45, 0.35].filter((q) => q <= quality))
+        );
+
+        let bestUrl = '';
+        if (format === 'webp') {
+          for (const q of qualitySteps) {
+            const candidate = encode('image/webp', q);
+            if (!candidate.startsWith('data:image/webp')) {
+              bestUrl = '';
+              break;
+            }
+            bestUrl = candidate;
+            if (candidate.length < maxChars) {
+              resolve(candidate);
+              return;
+            }
+          }
         }
+
+        // Fallback to JPEG (or if WebP is unsupported / still exceeds maxChars)
+        for (const q of qualitySteps) {
+          const candidate = encode('image/jpeg', q);
+          bestUrl = candidate;
+          if (candidate.length < maxChars) {
+            resolve(candidate);
+            return;
+          }
+        }
+
+        resolve(bestUrl);
       };
       img.src = String(reader.result);
     };

@@ -28,6 +28,9 @@ import type {
   ThemeId,
 } from './types/hub';
 import {
+  PROFILE_LOGO_MAX_CHARS,
+  PROFILE_LOGO_MAX_PX,
+  PROFILE_LOGO_QUALITY,
   buildStandaloneHtml,
   createDefaultHubData,
   extractUniqueCategories,
@@ -423,7 +426,13 @@ export default function App() {
     e.target.value = '';
     if (!file) return;
     try {
-      const resized = await resizeImageToDataUrl(file, 400, 'png');
+      const resized = await resizeImageToDataUrl(
+        file,
+        PROFILE_LOGO_MAX_PX,
+        'webp',
+        PROFILE_LOGO_QUALITY,
+        PROFILE_LOGO_MAX_CHARS
+      );
       const current = latestDataRef.current;
       const updated: HubData = {
         ...current,
@@ -438,6 +447,15 @@ export default function App() {
     } catch {
       showNotice('ไม่สามารถอัปโหลดรูปโลโก้ได้');
     }
+  };
+
+  const handleSyncNow = () => {
+    const activeUrl = (scriptUrlRef.current || loadScriptUrl()).trim();
+    if (!activeUrl) {
+      showNotice('ยังไม่ได้เชื่อมต่อ Google Sheets (ตั้งค่า URL ในโหมดแก้ไข)');
+      return;
+    }
+    pullCloudData(activeUrl, false);
   };
 
   return (
@@ -466,7 +484,7 @@ export default function App() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => persistChanges(data, true)}
+              onClick={() => persistChanges(latestDataRef.current, true)}
               disabled={syncStatus.state === 'syncing'}
               className="flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold transition-opacity hover:opacity-85 disabled:opacity-60 sm:text-sm"
               style={{
@@ -560,7 +578,7 @@ export default function App() {
                 }}
               >
                 <ImagePlus className="h-3.5 w-3.5" style={{ color: palette.accent }} aria-hidden="true" />
-                <span>เปลี่ยนรูปโลโก้ (400px)</span>
+                <span>เปลี่ยนรูปโลโก้ (180px)</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -593,7 +611,7 @@ export default function App() {
             palette={palette}
             onSelectTheme={handleSelectTheme}
             onUpdateCustomTheme={handleUpdateCustomTheme}
-            onSaveTheme={() => persistChanges(data, true)}
+            onSaveTheme={() => persistChanges(latestDataRef.current, true)}
           />
         )}
 
@@ -704,13 +722,41 @@ export default function App() {
           />
         </div>
 
+        {/* Bottom Subtle Sync Now Bar */}
+        <footer className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={handleSyncNow}
+            disabled={syncStatus.state === 'syncing'}
+            className="inline-flex min-h-[34px] items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1 text-[11px] font-medium transition-opacity hover:opacity-100 disabled:opacity-60"
+            style={{
+              backgroundColor: palette.cardBg,
+              border: `1px solid ${palette.cardBorder}`,
+              color: palette.textMuted,
+              opacity: 0.85,
+            }}
+          >
+            <RefreshCw
+              className={`h-3 w-3 shrink-0 ${syncStatus.state === 'syncing' ? 'animate-spin' : ''}`}
+              style={{ color: palette.accent }}
+              aria-hidden="true"
+            />
+            <span>
+              {syncStatus.state === 'syncing'
+                ? 'กำลังซิงก์ข้อมูล...'
+                : 'ซิงก์ข้อมูลล่าสุด (Sync Now)'}
+            </span>
+          </button>
+        </footer>
+
         {/* Admin-Only Music Settings Bar */}
         {isAdmin && (
           <MusicSettingsBar
             config={data.music}
             palette={palette}
             onSaveMusic={(updatedMusic) => {
-              persistChanges({ ...data, music: updatedMusic }, true);
+              const current = latestDataRef.current;
+              persistChanges({ ...current, music: updatedMusic }, true);
             }}
           />
         )}
