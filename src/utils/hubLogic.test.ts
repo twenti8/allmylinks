@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_SCRIPT_URL,
+  buildCacheBustedScriptUrl,
   buildGoogleAppsScriptCode,
   buildStandaloneHtml,
   buildWebAppManifest,
@@ -15,10 +17,12 @@ import {
   formatPlaybackTime,
   formatProfileFrame,
   getFaviconUrl,
+  isValidScriptUrl,
   normalizeUrl,
   parseLinkDecoration,
   parseProfileFrame,
   reorderLinks,
+  resolveScriptUrl,
   sanitizeAndParseHubData,
   validatePasscode,
 } from './hubLogic';
@@ -192,4 +196,45 @@ test('formatPlaybackTime, computeProgressPercent, and computeSeekTimeFromPercent
   assert.equal(computeSeekTimeFromPercent(50, 200), 100);
   assert.equal(computeSeekTimeFromPercent(120, 200), 200);
   assert.equal(computeSeekTimeFromPercent(50, 0), 0);
+});
+
+test('DEFAULT_SCRIPT_URL, resolveScriptUrl, and buildCacheBustedScriptUrl handle cross-device auto-sync', () => {
+  assert.equal(typeof DEFAULT_SCRIPT_URL, 'string');
+  assert.equal(isValidScriptUrl(DEFAULT_SCRIPT_URL), false);
+  assert.equal(isValidScriptUrl(''), false);
+  assert.equal(isValidScriptUrl('https://script.google.com/macros/s/abc123/exec'), true);
+
+  // New device with empty localStorage uses valid defaultUrl automatically
+  assert.equal(
+    resolveScriptUrl('', 'https://script.google.com/macros/s/default-id/exec'),
+    'https://script.google.com/macros/s/default-id/exec'
+  );
+  // Explicit localStorage override wins over defaultUrl
+  assert.equal(
+    resolveScriptUrl(
+      'https://script.google.com/macros/s/local-id/exec',
+      'https://script.google.com/macros/s/default-id/exec'
+    ),
+    'https://script.google.com/macros/s/local-id/exec'
+  );
+  // Placeholder defaultUrl stays safe (no broken fetch)
+  assert.equal(resolveScriptUrl('', DEFAULT_SCRIPT_URL), '');
+
+  // Cache-busting ?t= query string
+  assert.equal(
+    buildCacheBustedScriptUrl('https://script.google.com/macros/s/abc/exec', 1700000000000),
+    'https://script.google.com/macros/s/abc/exec?t=1700000000000'
+  );
+  assert.equal(
+    buildCacheBustedScriptUrl('https://script.google.com/macros/s/abc/exec?v=1', 1700000000000),
+    'https://script.google.com/macros/s/abc/exec?v=1&t=1700000000000'
+  );
+});
+
+test('buildStandaloneHtml embeds ?t= cache buster and visibilitychange/focus auto-sync listeners', () => {
+  const data = createDefaultHubData();
+  const html = buildStandaloneHtml(data, 'https://script.google.com/macros/s/test/exec');
+  assert.ok(html.includes("'t=' + Date.now()"));
+  assert.ok(html.includes('visibilitychange'));
+  assert.ok(html.includes("'focus'"));
 });

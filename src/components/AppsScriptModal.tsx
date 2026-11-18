@@ -102,7 +102,7 @@ export const AppsScriptModal: React.FC<AppsScriptModalProps> = ({
             <code>Anyone (ทุกคน)</code> แล้วกด Deploy
           </li>
           <li>
-            <strong>6. คัดลอก Web App URL</strong> (ขึ้นต้นด้วย <code>https://script.google.com/macros/s/...</code>) มาวางในช่อง GOOGLE_SCRIPT_URL ของหน้าตั้งค่า
+            <strong>6. คัดลอก Web App URL</strong> (ขึ้นต้นด้วย <code>https://script.google.com/macros/s/...</code>) มาวางในช่อง GOOGLE_SCRIPT_URL ของหน้าตั้งค่า หรือฝังในค่าคงที่ <code>DEFAULT_SCRIPT_URL</code> ในโค้ดเพื่อให้ทุกอุปกรณ์ซิงก์อัตโนมัติทันที
           </li>
         </ol>
 

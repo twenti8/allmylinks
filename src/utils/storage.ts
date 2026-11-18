@@ -1,9 +1,12 @@
 import type { HubData, ThemeId } from '../types/hub';
 import {
+  DEFAULT_SCRIPT_URL,
   STORAGE_DATA_KEY,
   STORAGE_SCRIPT_URL_KEY,
+  buildCacheBustedScriptUrl,
   buildWebAppManifest,
   createDefaultHubData,
+  resolveScriptUrl,
   sanitizeAndParseHubData,
 } from './hubLogic';
 import { resolveActivePalette } from './themes';
@@ -31,11 +34,12 @@ export function saveLocalHubData(data: HubData): void {
   }
 }
 
-export function loadScriptUrl(): string {
+export function loadScriptUrl(defaultUrl: string = DEFAULT_SCRIPT_URL): string {
   try {
-    return localStorage.getItem(STORAGE_SCRIPT_URL_KEY) || '';
+    const stored = localStorage.getItem(STORAGE_SCRIPT_URL_KEY);
+    return resolveScriptUrl(stored, defaultUrl);
   } catch {
-    return '';
+    return resolveScriptUrl('', defaultUrl);
   }
 }
 
@@ -104,8 +108,8 @@ export async function fetchFromGoogleSheets(scriptUrl: string): Promise<HubData 
   const url = scriptUrl.trim();
   if (!url) return null;
 
-  const separator = url.includes('?') ? '&' : '?';
-  const response = await fetch(`${url}${separator}_t=${Date.now()}`, {
+  const requestUrl = buildCacheBustedScriptUrl(url, Date.now());
+  const response = await fetch(requestUrl, {
     method: 'GET',
     cache: 'no-store',
   });

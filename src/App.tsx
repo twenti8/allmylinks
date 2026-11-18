@@ -91,39 +91,85 @@ export default function App() {
     applyThemeAndIosMeta(data);
   }, [data]);
 
-  // Background Cloud Sync on initial load if GOOGLE_SCRIPT_URL is configured
-  const pullCloudData = useCallback(async (urlToUse: string, silent = true) => {
-    const cleanUrl = urlToUse.trim();
-    if (!cleanUrl) return;
-    setSyncStatus({ state: 'syncing', message: 'กำลังซิงก์ข้อมูลจาก Google Sheets...' });
-    try {
-      const cloudData = await fetchFromGoogleSheets(cleanUrl);
-      if (cloudData) {
-        commitLocalData(cloudData);
+  const isPullingRef = useRef(false);
+  const isSavingRef = useRef(false);
+  const lastPullAtRef = useRef(0);
+  const scriptUrlRef = useRef(scriptUrl);
+  scriptUrlRef.current = scriptUrl;
+
+  const hasOpenModalRef = useRef(false);
+  hasOpenModalRef.current = Boolean(
+    passcodeModalOpen ||
+      profileModalOpen ||
+      linkModalOpen ||
+      gasGuideOpen ||
+      deleteTarget ||
+      resetConfirmOpen
+  );
+
+  // Background Cloud Sync on initial load & tab resume if GOOGLE_SCRIPT_URL / DEFAULT_SCRIPT_URL is configured
+  const pullCloudData = useCallback(
+    async (urlToUse: string, silent = true) => {
+      const cleanUrl = urlToUse.trim();
+      if (!cleanUrl || isPullingRef.current || isSavingRef.current) return;
+
+      isPullingRef.current = true;
+      lastPullAtRef.current = Date.now();
+      setSyncStatus({ state: 'syncing', message: 'กำลังซิงก์ข้อมูลจาก Google Sheets...' });
+
+      try {
+        const cloudData = await fetchFromGoogleSheets(cleanUrl);
+        if (cloudData) {
+          if (JSON.stringify(cloudData) !== JSON.stringify(latestDataRef.current)) {
+            commitLocalData(cloudData);
+          }
+          setSyncStatus({
+            state: 'synced',
+            message: 'ซิงก์ข้อมูลล่าสุดแล้ว',
+            lastSyncedAt: new Date().toISOString(),
+          });
+          if (!silent) showNotice('ดึงข้อมูลล่าสุดจาก Google Sheets เรียบร้อย');
+        } else {
+          setSyncStatus({ state: 'idle', message: 'ยังไม่มีข้อมูลใน Google Sheets' });
+          if (!silent) showNotice('ยังไม่มีข้อมูลบน Cloud');
+        }
+      } catch {
         setSyncStatus({
-          state: 'synced',
-          message: 'ซิงก์ข้อมูลล่าสุดแล้ว',
-          lastSyncedAt: new Date().toISOString(),
+          state: 'error',
+          message: 'เชื่อมต่อ Google Sheets ไม่สำเร็จ (ใช้ข้อมูลในเครื่อง)',
         });
-        if (!silent) showNotice('ดึงข้อมูลล่าสุดจาก Google Sheets เรียบร้อย');
-      } else {
-        setSyncStatus({ state: 'idle', message: 'ยังไม่มีข้อมูลใน Google Sheets' });
-        if (!silent) showNotice('ยังไม่มีข้อมูลบน Cloud');
+        if (!silent) showNotice('ดึงข้อมูลจาก Cloud ไม่สำเร็จ กรุณาตรวจสอบ URL');
+      } finally {
+        isPullingRef.current = false;
       }
-    } catch {
-      setSyncStatus({
-        state: 'error',
-        message: 'เชื่อมต่อ Google Sheets ไม่สำเร็จ (ใช้ข้อมูลในเครื่อง)',
-      });
-      if (!silent) showNotice('ดึงข้อมูลจาก Cloud ไม่สำเร็จ กรุณาตรวจสอบ URL');
-    }
-  }, [showNotice]);
+    },
+    [commitLocalData, showNotice]
+  );
 
   useEffect(() => {
-    if (scriptUrl) {
-      pullCloudData(scriptUrl, true);
+    const initialUrl = (scriptUrlRef.current || loadScriptUrl()).trim();
+    if (initialUrl) {
+      pullCloudData(initialUrl, true);
     }
-  }, []); // Only run once on mount
+
+    const handleResumeSync = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (hasOpenModalRef.current || isSavingRef.current || isPullingRef.current) return;
+      if (Date.now() - lastPullAtRef.current < 1500) return;
+
+      const activeUrl = (scriptUrlRef.current || loadScriptUrl()).trim();
+      if (activeUrl) {
+        pullCloudData(activeUrl, true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleResumeSync);
+    window.addEventListener('focus', handleResumeSync);
+    return () => {
+      document.removeEventListener('visibilitychange', handleResumeSync);
+      window.removeEventListener('focus', handleResumeSync);
+    };
+  }, [pullCloudData]);
 
   // Persist to localStorage & optionally push to Google Sheets directly with the passed object
   const persistChanges = useCallback(
@@ -141,9 +187,11 @@ export default function App() {
       const activeUrl = (overrideScriptUrl ?? (scriptUrl || loadScriptUrl())).trim();
 
       if (pushCloud && activeUrl) {
+        isSavingRef.current = true;
         setSyncStatus({ state: 'syncing', message: 'กำลังบันทึกขึ้น Google Sheets...' });
         try {
           await saveToGoogleSheets(activeUrl, stamped);
+          lastPullAtRef.current = Date.now();
           setSyncStatus({
             state: 'synced',
             message: 'บันทึกลง Cloud แล้ว',
@@ -158,6 +206,8 @@ export default function App() {
           });
           showNotice('บันทึกในเครื่องแล้ว แต่ไม่สามารถส่งไป Google Sheets ได้');
           return { ok: false, cloudSynced: false, hasScriptUrl: true };
+        } finally {
+          isSavingRef.current = false;
         }
       } else if (pushCloud) {
         showNotice('บันทึกข้อมูลลงในเครื่องเรียบร้อยแล้ว');
@@ -306,10 +356,12 @@ export default function App() {
 
   const handleSaveScriptUrl = (url: string) => {
     const trimmed = url.trim();
-    setScriptUrl(trimmed);
     saveScriptUrl(trimmed);
-    if (trimmed) {
-      showNotice('บันทึก GOOGLE_SCRIPT_URL แล้ว');
+    const effective = loadScriptUrl();
+    setScriptUrl(effective);
+    if (effective) {
+      showNotice(trimmed ? 'บันทึก GOOGLE_SCRIPT_URL แล้ว' : 'ใช้ค่าเริ่มต้น DEFAULT_SCRIPT_URL แล้ว');
+      pullCloudData(effective, true);
     } else {
       setSyncStatus({ state: 'idle', message: '' });
       showNotice('ล้างการเชื่อมต่อ Google Sheets แล้ว');

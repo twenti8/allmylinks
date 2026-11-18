@@ -6,8 +6,43 @@ import {
 } from './themes';
 
 export const DEFAULT_PASSCODE = '1234';
+export const DEFAULT_SCRIPT_URL = 'ใส่ลิงก์_WEB_APP_URL_ของคุณตรงนี้';
 export const STORAGE_DATA_KEY = 'pastel_link_hub_data_v1';
 export const STORAGE_SCRIPT_URL_KEY = 'pastel_link_hub_script_url_v1';
+
+export function isValidScriptUrl(url: string | null | undefined): boolean {
+  const trimmed = (url || '').trim();
+  if (!trimmed || trimmed === DEFAULT_SCRIPT_URL) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+export function resolveScriptUrl(
+  localUrl: string | null | undefined,
+  defaultUrl: string = DEFAULT_SCRIPT_URL
+): string {
+  if (isValidScriptUrl(localUrl)) {
+    return (localUrl || '').trim();
+  }
+  if (isValidScriptUrl(defaultUrl)) {
+    return defaultUrl.trim();
+  }
+  return '';
+}
+
+export function buildCacheBustedScriptUrl(
+  scriptUrl: string,
+  timestamp: number = Date.now()
+): string {
+  const trimmed = (scriptUrl || '').trim();
+  if (!trimmed) return '';
+  const separator = trimmed.includes('?') ? '&' : '?';
+  return `${trimmed}${separator}t=${timestamp}`;
+}
 
 // Cute inline SVG data URI for the default pastel profile avatar
 export const DEFAULT_AVATAR_SVG =
@@ -531,7 +566,8 @@ function escapeHtml(str: string): string {
 export function buildStandaloneHtml(data: HubData, scriptUrl = ''): string {
   const theme = resolveActivePalette(data.theme, data.customTheme);
   const serialized = JSON.stringify(data).replace(/</g, '\\u003c');
-  const safeScriptUrl = JSON.stringify(scriptUrl).replace(/</g, '\\u003c');
+  const resolvedUrl = resolveScriptUrl(scriptUrl, DEFAULT_SCRIPT_URL);
+  const safeScriptUrl = JSON.stringify(resolvedUrl).replace(/</g, '\\u003c');
   const title = escapeHtml(data.iosConfig.appName || data.profileName);
   const bio = escapeHtml(data.profileBio || '');
   const ytId = data.music.enabled ? extractYouTubeId(data.music.youtubeUrl) : null;
@@ -695,12 +731,22 @@ export function buildStandaloneHtml(data: HubData, scriptUrl = ''): string {
         linksEl.appendChild(a);
       });
     }
-    render();
-    if (SCRIPT_URL) {
-      fetch(SCRIPT_URL).then(function (r) { return r.json(); }).then(function (res) {
-        if (res && res.data) { HUB_DATA = res.data; render(); }
-      }).catch(function () {});
+    function pullCloud() {
+      if (!SCRIPT_URL) return;
+      var sep = SCRIPT_URL.indexOf('?') !== -1 ? '&' : '?';
+      fetch(SCRIPT_URL + sep + 't=' + Date.now(), { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.data) { HUB_DATA = res.data; render(); }
+        })
+        .catch(function () {});
     }
+    render();
+    pullCloud();
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') pullCloud();
+    });
+    window.addEventListener('focus', pullCloud);
   </script>
 </body>
 </html>`;
