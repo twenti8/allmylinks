@@ -44,6 +44,17 @@ export function buildCacheBustedScriptUrl(
   return `${trimmed}${separator}t=${timestamp}`;
 }
 
+export function isNonEmptyCloudPayload(
+  payload: unknown
+): payload is Record<string, unknown> {
+  return Boolean(
+    payload &&
+      typeof payload === 'object' &&
+      !Array.isArray(payload) &&
+      Object.keys(payload as Record<string, unknown>).length > 0
+  );
+}
+
 // Cute inline SVG data URI for the default pastel profile avatar
 export const DEFAULT_AVATAR_SVG =
   'data:image/svg+xml;utf8,' +
@@ -428,16 +439,18 @@ export function sanitizeAndParseHubData(raw: unknown): HubData | null {
       ? (obj.customTheme as Record<string, unknown>)
       : {};
 
+  const resolvedProfileImage =
+    typeof obj.profileImage === 'string' && obj.profileImage.trim()
+      ? obj.profileImage.trim()
+      : defaults.profileImage;
+
   return {
     profileName:
       typeof obj.profileName === 'string' && obj.profileName.trim()
         ? obj.profileName
         : defaults.profileName,
     profileBio: typeof obj.profileBio === 'string' ? obj.profileBio : defaults.profileBio,
-    profileImage:
-      typeof obj.profileImage === 'string' && obj.profileImage.trim()
-        ? obj.profileImage
-        : defaults.profileImage,
+    profileImage: resolvedProfileImage,
     theme: isValidThemeId(obj.theme) ? obj.theme : defaults.theme,
     customTheme: {
       bg: normalizeHexColor(customRaw.bg, DEFAULT_CUSTOM_THEME.bg),
@@ -473,8 +486,8 @@ export function sanitizeAndParseHubData(raw: unknown): HubData | null {
           : defaults.iosConfig.appName,
       appIcon:
         typeof iosRaw.appIcon === 'string' && iosRaw.appIcon.trim()
-          ? iosRaw.appIcon
-          : defaults.iosConfig.appIcon,
+          ? iosRaw.appIcon.trim()
+          : resolvedProfileImage,
     },
     passcode:
       typeof obj.passcode === 'string' && obj.passcode.trim().length >= 4
@@ -730,6 +743,19 @@ export function buildStandaloneHtml(data: HubData, scriptUrl = ''): string {
         }
         linksEl.appendChild(a);
       });
+      var avatarEl = document.getElementById('avatar');
+      if (avatarEl && HUB_DATA.profileImage) {
+        avatarEl.src = HUB_DATA.profileImage;
+        avatarEl.alt = HUB_DATA.profileName || '';
+      }
+      var nameEl = document.getElementById('name');
+      if (nameEl && HUB_DATA.profileName) {
+        nameEl.textContent = HUB_DATA.profileName;
+      }
+      var bioEl = document.getElementById('bio');
+      if (bioEl) {
+        bioEl.textContent = HUB_DATA.profileBio || '';
+      }
     }
     function pullCloud() {
       if (!SCRIPT_URL) return;
@@ -737,14 +763,19 @@ export function buildStandaloneHtml(data: HubData, scriptUrl = ''): string {
       fetch(SCRIPT_URL + sep + 't=' + Date.now(), { cache: 'no-store' })
         .then(function (r) { return r.json(); })
         .then(function (res) {
-          if (res && res.data) { HUB_DATA = res.data; render(); }
+          var next = res && typeof res === 'object' && 'data' in res ? res.data : res;
+          if (next && typeof next === 'object' && !Array.isArray(next) && Object.keys(next).length > 0) {
+            HUB_DATA = next;
+            try { localStorage.setItem('pastel_link_hub_data_v1', JSON.stringify(next)); } catch (e) {}
+            render();
+          }
         })
         .catch(function () {});
     }
     render();
     pullCloud();
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'visible') pullCloud();
+      if (document.visibilityState !== 'hidden') pullCloud();
     });
     window.addEventListener('focus', pullCloud);
   </script>

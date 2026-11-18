@@ -17,6 +17,7 @@ import {
   formatPlaybackTime,
   formatProfileFrame,
   getFaviconUrl,
+  isNonEmptyCloudPayload,
   isValidScriptUrl,
   normalizeUrl,
   parseLinkDecoration,
@@ -237,4 +238,20 @@ test('buildStandaloneHtml embeds ?t= cache buster and visibilitychange/focus aut
   assert.ok(html.includes("'t=' + Date.now()"));
   assert.ok(html.includes('visibilitychange'));
   assert.ok(html.includes("'focus'"));
+});
+
+test('isNonEmptyCloudPayload rejects {} and empty values while sanitizeAndParseHubData syncs profileImage', () => {
+  assert.equal(isNonEmptyCloudPayload({}), false);
+  assert.equal(isNonEmptyCloudPayload(null), false);
+  assert.equal(isNonEmptyCloudPayload([]), false);
+  assert.equal(isNonEmptyCloudPayload({ profileName: 'Moogrob' }), true);
+
+  const cloudParsed = sanitizeAndParseHubData({
+    profileImage: '  https://cdn.example.com/logo.png  ',
+    passcode: '5678',
+  });
+  assert.ok(cloudParsed);
+  assert.equal(cloudParsed.profileImage, 'https://cdn.example.com/logo.png');
+  assert.equal(cloudParsed.iosConfig.appIcon, 'https://cdn.example.com/logo.png');
+  assert.equal(cloudParsed.passcode, '5678');
 });

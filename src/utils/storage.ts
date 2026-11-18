@@ -6,6 +6,7 @@ import {
   buildCacheBustedScriptUrl,
   buildWebAppManifest,
   createDefaultHubData,
+  isNonEmptyCloudPayload,
   resolveScriptUrl,
   sanitizeAndParseHubData,
 } from './hubLogic';
@@ -120,7 +121,7 @@ export async function fetchFromGoogleSheets(scriptUrl: string): Promise<HubData 
 
   const json = await response.json();
   const payload = json && typeof json === 'object' && 'data' in json ? json.data : json;
-  if (!payload) return null;
+  if (!isNonEmptyCloudPayload(payload)) return null;
 
   return sanitizeAndParseHubData(payload);
 }

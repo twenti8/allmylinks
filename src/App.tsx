@@ -120,9 +120,8 @@ export default function App() {
       try {
         const cloudData = await fetchFromGoogleSheets(cleanUrl);
         if (cloudData) {
-          if (JSON.stringify(cloudData) !== JSON.stringify(latestDataRef.current)) {
-            commitLocalData(cloudData);
-          }
+          // Google Sheets is the source of truth: overwrite both React state and localStorage immediately
+          commitLocalData(cloudData);
           setSyncStatus({
             state: 'synced',
             message: 'ซิงก์ข้อมูลล่าสุดแล้ว',
@@ -153,9 +152,9 @@ export default function App() {
     }
 
     const handleResumeSync = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState === 'hidden') return;
       if (hasOpenModalRef.current || isSavingRef.current || isPullingRef.current) return;
-      if (Date.now() - lastPullAtRef.current < 1500) return;
+      if (Date.now() - lastPullAtRef.current < 500) return;
 
       const activeUrl = (scriptUrlRef.current || loadScriptUrl()).trim();
       if (activeUrl) {
@@ -276,9 +275,10 @@ export default function App() {
   };
 
   const handleSaveLink = (payload: Omit<LinkItem, 'id'> & { id?: string }) => {
+    const current = latestDataRef.current;
     let nextLinks: LinkItem[];
     if (payload.id) {
-      nextLinks = data.links.map((item) =>
+      nextLinks = current.links.map((item) =>
         item.id === payload.id
           ? {
               ...item,
@@ -299,21 +299,22 @@ export default function App() {
         category: payload.category,
         icon: payload.icon,
       };
-      nextLinks = [...data.links, newItem];
+      nextLinks = [...current.links, newItem];
     }
 
     setLinkModalOpen(false);
     setEditingLink(null);
     persistChanges(
-      { ...data, links: nextLinks, categories: extractUniqueCategories(nextLinks) },
+      { ...current, links: nextLinks, categories: extractUniqueCategories(nextLinks) },
       true
     );
   };
 
   const handleMoveLink = (visibleIndex: number, direction: 'up' | 'down') => {
+    const current = latestDataRef.current;
     const targetLink = visibleLinks[visibleIndex];
     if (!targetLink) return;
-    const realIndex = data.links.findIndex((l) => l.id === targetLink.id);
+    const realIndex = current.links.findIndex((l) => l.id === targetLink.id);
     if (realIndex === -1) return;
 
     // If filtered, swap within the full list relative to adjacent visible item
@@ -321,33 +322,35 @@ export default function App() {
       const swapVisibleIdx = direction === 'up' ? visibleIndex - 1 : visibleIndex + 1;
       const swapLink = visibleLinks[swapVisibleIdx];
       if (!swapLink) return;
-      const swapRealIndex = data.links.findIndex((l) => l.id === swapLink.id);
+      const swapRealIndex = current.links.findIndex((l) => l.id === swapLink.id);
       if (swapRealIndex === -1) return;
-      const nextLinks = [...data.links];
+      const nextLinks = [...current.links];
       const temp = nextLinks[realIndex];
       nextLinks[realIndex] = nextLinks[swapRealIndex];
       nextLinks[swapRealIndex] = temp;
-      persistChanges({ ...data, links: nextLinks }, false);
+      persistChanges({ ...current, links: nextLinks }, false);
       return;
     }
 
-    const nextLinks = reorderLinks(data.links, realIndex, direction);
-    persistChanges({ ...data, links: nextLinks }, false);
+    const nextLinks = reorderLinks(current.links, realIndex, direction);
+    persistChanges({ ...current, links: nextLinks }, false);
   };
 
   const handleConfirmDeleteLink = () => {
     if (!deleteTarget) return;
-    const nextLinks = data.links.filter((l) => l.id !== deleteTarget.id);
+    const current = latestDataRef.current;
+    const nextLinks = current.links.filter((l) => l.id !== deleteTarget.id);
     setDeleteTarget(null);
     persistChanges(
-      { ...data, links: nextLinks, categories: extractUniqueCategories(nextLinks) },
+      { ...current, links: nextLinks, categories: extractUniqueCategories(nextLinks) },
       true
     );
   };
 
   const handleSaveProfile = (partial: Partial<HubData>) => {
+    const current = latestDataRef.current;
     const updated: HubData = {
-      ...data,
+      ...current,
       ...partial,
     };
     setProfileModalOpen(false);
@@ -369,7 +372,8 @@ export default function App() {
   };
 
   const handleExportJson = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const current = latestDataRef.current;
+    const blob = new Blob([JSON.stringify(current, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -395,7 +399,7 @@ export default function App() {
   };
 
   const handleDownloadHtml = () => {
-    const html = buildStandaloneHtml(data, scriptUrl);
+    const html = buildStandaloneHtml(latestDataRef.current, scriptUrl);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -420,11 +424,12 @@ export default function App() {
     if (!file) return;
     try {
       const resized = await resizeImageToDataUrl(file, 400, 'png');
+      const current = latestDataRef.current;
       const updated: HubData = {
-        ...data,
+        ...current,
         profileImage: resized,
         iosConfig: {
-          ...data.iosConfig,
+          ...current.iosConfig,
           appIcon: resized,
         },
       };
@@ -522,6 +527,7 @@ export default function App() {
             <img
               src={data.profileImage}
               alt={data.profileName}
+              referrerPolicy="no-referrer"
               className="h-full w-full rounded-full object-cover"
             />
           </div>
