@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Pastel Link Hub</title>
+    <meta
+      name="description"
+      content="หน้ารวมลิงก์ส่วนตัวสไตล์มินิมอลพาสเทล ซิงก์ข้อมูลข้ามอุปกรณ์ด้วย Google Sheets"
+    />
+    <meta property="og:title" content="Pastel Link Hub" />
+    <meta
+      property="og:description"
+      content="หน้ารวมลิงก์ส่วนตัวสไตล์มินิมอลพาสเทล ซิงก์ข้อมูลข้ามอุปกรณ์ด้วย Google Sheets"
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- iOS Add to Home Screen & Dynamic Manifest Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Pastel Hub" id="ios-app-title" />
+    <meta name="theme-color" content="#FDF8E7" id="app-theme-color" />
+    <link rel="apple-touch-icon" href="" id="ios-touch-icon" />
+    <link rel="icon" href="" id="app-favicon" />
+    <link rel="manifest" href="" id="app-manifest" />
+
+    <!-- Fonts: Quicksand + Noto Sans Thai -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&family=Quicksand:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Zero-Flash Pre-Render Theme & Meta Hydrator -->
+    <script>
+      (function () {
+        try {
+          var palettes = {
+            cream: { bg: '#FDF8E7', text: '#6B4411', accent: '#6B4411' },
+            pink: { bg: '#FDECF2', text: '#542B3B', accent: '#C45680' },
+            peach: { bg: '#FEF2EA', text: '#593320', accent: '#C2673C' },
+            mint: { bg: '#EAF8F2', text: '#1D4235', accent: '#2D8063' },
+            blue: { bg: '#EAF4FC', text: '#213D54', accent: '#3876AD' },
+            purple: { bg: '#F3EEFC', text: '#392B54', accent: '#724EB2' },
+          };
+          var isHex = function (val) {
+            return typeof val === 'string' && /^#[0-9a-fA-F]{6}$/.test(val.trim());
+          };
+          var raw = localStorage.getItem('pastel_link_hub_data_v1');
+          var theme = 'cream';
+          var customPalette = null;
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && parsed.theme === 'custom') {
+              theme = 'custom';
+              var c = parsed.customTheme || {};
+              var cBg = isHex(c.bg) ? c.bg.trim().toUpperCase() : '#FDF8E7';
+              var cAccent = isHex(c.accent) ? c.accent.trim().toUpperCase() : '#6B4411';
+              customPalette = { bg: cBg, text: cAccent, accent: cAccent };
+            } else if (parsed && parsed.theme && palettes[parsed.theme]) {
+              theme = parsed.theme;
+            }
+            var appTitle =
+              (parsed && parsed.iosConfig && parsed.iosConfig.appName) ||
+              (parsed && parsed.profileName) ||
+              'Pastel Link Hub';
+            document.title = appTitle;
+            var metaTitle = document.getElementById('ios-app-title');
+            if (metaTitle) metaTitle.setAttribute('content', appTitle);
+
+            var iconHref =
+              (parsed && parsed.iosConfig && parsed.iosConfig.appIcon) ||
+              (parsed && parsed.profileImage) ||
+              '';
+            if (iconHref) {
+              var iconEl = document.getElementById('ios-touch-icon');
+              if (iconEl) iconEl.setAttribute('href', iconHref);
+              var favEl = document.getElementById('app-favicon');
+              if (favEl) favEl.setAttribute('href', iconHref);
+            }
+          }
+          var p = customPalette || palettes[theme];
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.setProperty('--hub-bg', p.bg);
+          document.documentElement.style.setProperty('--hub-text', p.text);
+          document.documentElement.style.setProperty('--hub-accent', p.accent);
+          document.documentElement.style.backgroundColor = p.bg;
+          var themeColorEl = document.getElementById('app-theme-color');
+          if (themeColorEl) themeColorEl.setAttribute('content', p.bg);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
