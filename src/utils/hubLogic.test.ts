@@ -4,12 +4,15 @@ import {
   buildGoogleAppsScriptCode,
   buildStandaloneHtml,
   buildWebAppManifest,
+  computeProgressPercent,
+  computeSeekTimeFromPercent,
   createDefaultHubData,
   extractHostname,
   extractUniqueCategories,
   extractYouTubeId,
   filterLinksByCategory,
   formatLinkDecoration,
+  formatPlaybackTime,
   formatProfileFrame,
   getFaviconUrl,
   normalizeUrl,
@@ -173,4 +176,20 @@ test('HubData serialization uses exact "passcode" JSON key and preserves updated
   const hydrated = sanitizeAndParseHubData(parsedJson.data);
   assert.ok(hydrated);
   assert.equal(hydrated.passcode, '9988');
+});
+
+test('formatPlaybackTime, computeProgressPercent, and computeSeekTimeFromPercent handle bounds safely', () => {
+  assert.equal(formatPlaybackTime(0), '0:00');
+  assert.equal(formatPlaybackTime(65), '1:05');
+  assert.equal(formatPlaybackTime(3661), '1:01:01');
+  assert.equal(formatPlaybackTime(-5), '0:00');
+  assert.equal(formatPlaybackTime(Number.NaN), '0:00');
+
+  assert.equal(computeProgressPercent(30, 120), 25);
+  assert.equal(computeProgressPercent(150, 120), 100);
+  assert.equal(computeProgressPercent(10, 0), 0);
+
+  assert.equal(computeSeekTimeFromPercent(50, 200), 100);
+  assert.equal(computeSeekTimeFromPercent(120, 200), 200);
+  assert.equal(computeSeekTimeFromPercent(50, 0), 0);
 });

@@ -129,6 +129,37 @@ export function extractYouTubeId(input: string): string | null {
   return null;
 }
 
+export function formatPlaybackTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return '0:00';
+  }
+  const totalSeconds = Math.floor(seconds);
+  const hrs = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+  const paddedSecs = String(secs).padStart(2, '0');
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, '0')}:${paddedSecs}`;
+  }
+  return `${mins}:${paddedSecs}`;
+}
+
+export function computeProgressPercent(currentTime: number, duration: number): number {
+  if (!Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0) {
+    return 0;
+  }
+  const ratio = (currentTime / duration) * 100;
+  return Math.min(100, Math.max(0, ratio));
+}
+
+export function computeSeekTimeFromPercent(percent: number, duration: number): number {
+  if (!Number.isFinite(percent) || !Number.isFinite(duration) || duration <= 0) {
+    return 0;
+  }
+  const clampedPercent = Math.min(100, Math.max(0, percent));
+  return (clampedPercent / 100) * duration;
+}
+
 export function extractUniqueCategories(links: LinkItem[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
