@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RotateCcw, Upload, X } from 'lucide-react';
 import type { HubData, ThemePalette } from '../types/hub';
 import {
   DEFAULT_AVATAR_SVG,
   PROFILE_FRAME_STYLES,
   PROFILE_LOGO_MAX_CHARS,
-  PROFILE_LOGO_MAX_PX,
-  PROFILE_LOGO_QUALITY,
+  UPLOAD_IMAGE_MAX_PX,
+  UPLOAD_IMAGE_QUALITY,
   type ProfileFrameId,
   extractUniqueCategories,
   formatProfileFrame,
@@ -34,23 +34,33 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
   const [frameId, setFrameId] = useState<ProfileFrameId>(initialParsed.frameId);
   const [profileBio, setProfileBio] = useState(data.profileBio || '');
   const [profileImage, setProfileImage] = useState(data.profileImage || DEFAULT_AVATAR_SVG);
+  const profileImageRef = useRef<string>(data.profileImage || DEFAULT_AVATAR_SVG);
+  const wasOpenRef = useRef<boolean>(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       const parsed = parseProfileFrame(data.profileName);
+      const initialImg = data.profileImage || DEFAULT_AVATAR_SVG;
       setCoreName(parsed.coreName);
       setFrameId(parsed.frameId);
       setProfileBio(data.profileBio || '');
-      setProfileImage(data.profileImage || DEFAULT_AVATAR_SVG);
+      setProfileImage(initialImg);
+      profileImageRef.current = initialImg;
       setError('');
     }
+    wasOpenRef.current = open;
   }, [open, data]);
 
   if (!open) return null;
 
   const isDataUri = profileImage.startsWith('data:');
+
+  const updateProfileImage = (nextImg: string) => {
+    profileImageRef.current = nextImg;
+    setProfileImage(nextImg);
+  };
 
   const handleUploadProfileImg = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -61,12 +71,12 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
     try {
       const resized = await resizeImageToDataUrl(
         file,
-        PROFILE_LOGO_MAX_PX,
-        'webp',
-        PROFILE_LOGO_QUALITY,
+        UPLOAD_IMAGE_MAX_PX,
+        'jpeg',
+        UPLOAD_IMAGE_QUALITY,
         PROFILE_LOGO_MAX_CHARS
       );
-      setProfileImage(resized);
+      updateProfileImage(resized);
     } catch {
       setError('ไม่สามารถอัปโหลดรูปโลโก้ได้');
     } finally {
@@ -75,12 +85,13 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
   };
 
   const handleResetLogo = () => {
-    setProfileImage(DEFAULT_AVATAR_SVG);
+    updateProfileImage(DEFAULT_AVATAR_SVG);
     setError('');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (uploading) return;
     const cleanedCore = coreName.trim();
     if (!cleanedCore) {
       setError('กรุณากรอกชื่อร้านหรือหัวข้อหลักของเว็บ');
@@ -88,7 +99,7 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
     }
 
     const formattedName = formatProfileFrame(cleanedCore, frameId);
-    const finalImage = profileImage.trim() || DEFAULT_AVATAR_SVG;
+    const finalImage = profileImageRef.current.trim() || DEFAULT_AVATAR_SVG;
 
     onSave({
       profileName: formattedName,
@@ -192,8 +203,8 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
 
                 <p className="text-[11px]" style={{ color: palette.textMuted }}>
                   {isDataUri && profileImage !== DEFAULT_AVATAR_SVG
-                    ? 'ใช้รูปที่อัปโหลดแล้ว (ย่อขนาด ≤180×180px WebP/JPEG อัตโนมัติ)'
-                    : 'ย่อขนาดอัปโหลดสูงสุด 180×180px (WebP/JPEG 0.75) เพื่อซิงก์ไว'}
+                    ? 'ใช้รูปที่อัปโหลดแล้ว (ย่อขนาด ≤160×160px JPEG 0.75 อัตโนมัติ)'
+                    : 'ย่อขนาดอัปโหลดสูงสุด 160×160px (JPEG 0.75) เพื่อซิงก์ข้ามเครื่องไว'}
                 </p>
               </div>
             </div>
@@ -210,7 +221,7 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
                 id="profile-logo-url-input"
                 type="text"
                 value={isDataUri ? '' : profileImage}
-                onChange={(e) => setProfileImage(e.target.value)}
+                onChange={(e) => updateProfileImage(e.target.value)}
                 placeholder="https://example.com/logo.jpg (ใช้ลิงก์รูปตรงจากเว็บ)"
                 className="w-full rounded-full px-4 py-2.5 text-xs outline-none focus:ring-2 sm:text-sm"
                 style={{
@@ -335,10 +346,11 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
             </button>
             <button
               type="submit"
-              className="min-h-[42px] whitespace-nowrap rounded-full px-6 py-2 text-xs font-semibold transition-transform active:scale-95 sm:text-sm"
+              disabled={uploading}
+              className="min-h-[42px] whitespace-nowrap rounded-full px-6 py-2 text-xs font-semibold transition-transform active:scale-95 disabled:opacity-60 sm:text-sm"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}
             >
-              บันทึกข้อมูลร้าน
+              {uploading ? 'กำลังย่อรูป...' : 'บันทึกข้อมูลร้าน'}
             </button>
           </div>
         </form>

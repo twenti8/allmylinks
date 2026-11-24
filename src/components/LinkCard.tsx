@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import type { LinkItem, ThemePalette } from '../types/hub';
 import { normalizeUrl } from '../utils/hubLogic';
@@ -25,12 +25,18 @@ export const LinkCard: React.FC<LinkCardProps> = ({
   onMove,
 }) => {
   const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [link.icon]);
+
+  const trimmedIcon = (link.icon || '').trim();
   const isImageSrc =
     !imgFailed &&
-    (link.icon.startsWith('data:') ||
-      link.icon.startsWith('http://') ||
-      link.icon.startsWith('https://') ||
-      link.icon.startsWith('/'));
+    (trimmedIcon.startsWith('data:') ||
+      trimmedIcon.startsWith('http://') ||
+      trimmedIcon.startsWith('https://') ||
+      trimmedIcon.startsWith('/'));
 
   return (
     <div className="group flex flex-col gap-2">

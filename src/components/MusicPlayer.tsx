@@ -106,9 +106,13 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
   useEffect(() => {
     setCoverFailed(false);
+  }, [config.coverImage]);
+
+  useEffect(() => {
+    setCoverFailed(false);
     setCurrentTime(0);
     setDuration(0);
-  }, [config.coverImage, videoId]);
+  }, [videoId]);
 
   useEffect(() => {
     if (!config.enabled || !videoId) return;

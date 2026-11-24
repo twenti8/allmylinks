@@ -9,8 +9,10 @@ export const DEFAULT_PASSCODE = '1234';
 export const GOOGLE_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbzGGsKII9wIZExoBB038USbMOC2O3Im6FkgK6szNsFiO70gViDiNKnR-GS6gIk1akMq/exec';
 export const STORAGE_DATA_KEY = 'pastel_link_hub_data_v1';
-export const PROFILE_LOGO_MAX_PX = 180;
-export const PROFILE_LOGO_QUALITY = 0.75;
+export const UPLOAD_IMAGE_MAX_PX = 160;
+export const UPLOAD_IMAGE_QUALITY = 0.75;
+export const PROFILE_LOGO_MAX_PX = UPLOAD_IMAGE_MAX_PX;
+export const PROFILE_LOGO_QUALITY = UPLOAD_IMAGE_QUALITY;
 export const PROFILE_LOGO_MAX_CHARS = 30000;
 
 export function calculateContainedDimensions(
@@ -413,7 +415,7 @@ export function sanitizeAndParseHubData(raw: unknown): HubData | null {
       subtitle: typeof item.subtitle === 'string' ? item.subtitle : '',
       url: typeof item.url === 'string' ? item.url : 'https://example.com',
       category: typeof item.category === 'string' ? item.category.trim() : '',
-      icon: typeof item.icon === 'string' && item.icon.trim() ? item.icon : '🔗',
+      icon: typeof item.icon === 'string' && item.icon.trim() ? item.icon.trim() : '🔗',
     }));
 
   const categories = extractUniqueCategories(links);
@@ -466,7 +468,7 @@ export function sanitizeAndParseHubData(raw: unknown): HubData | null {
       artist: typeof musicRaw.artist === 'string' ? musicRaw.artist : defaults.music.artist,
       coverImage:
         typeof musicRaw.coverImage === 'string'
-          ? musicRaw.coverImage
+          ? musicRaw.coverImage.trim()
           : defaults.music.coverImage,
       volume: parsedVolume,
       autoplay: typeof musicRaw.autoplay === 'boolean' ? musicRaw.autoplay : defaults.music.autoplay,

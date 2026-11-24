@@ -1,6 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Music, Save, Trash2 } from 'lucide-react';
 import type { MusicConfig, ThemePalette } from '../types/hub';
+import {
+  PROFILE_LOGO_MAX_CHARS,
+  UPLOAD_IMAGE_MAX_PX,
+  UPLOAD_IMAGE_QUALITY,
+} from '../utils/hubLogic';
 import { resizeImageToDataUrl } from '../utils/imageResize';
 
 interface MusicSettingsBarProps {
@@ -19,25 +24,45 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
   const [title, setTitle] = useState(config.title);
   const [artist, setArtist] = useState(config.artist);
   const [coverImage, setCoverImage] = useState(config.coverImage);
+  const coverImageRef = useRef<string>(config.coverImage);
   const [autoplay, setAutoplay] = useState(config.autoplay);
   const [uploading, setUploading] = useState(false);
+
+  const updateCoverImage = (nextCover: string) => {
+    coverImageRef.current = nextCover;
+    setCoverImage(nextCover);
+  };
 
   useEffect(() => {
     setEnabled(config.enabled);
     setYoutubeUrl(config.youtubeUrl);
     setTitle(config.title);
     setArtist(config.artist);
-    setCoverImage(config.coverImage);
+    updateCoverImage(config.coverImage);
     setAutoplay(config.autoplay);
-  }, [config]);
+  }, [
+    config.enabled,
+    config.youtubeUrl,
+    config.title,
+    config.artist,
+    config.coverImage,
+    config.autoplay,
+  ]);
 
   const handleUploadCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     setUploading(true);
     try {
-      const resized = await resizeImageToDataUrl(file, 300);
-      setCoverImage(resized);
+      const resized = await resizeImageToDataUrl(
+        file,
+        UPLOAD_IMAGE_MAX_PX,
+        'jpeg',
+        UPLOAD_IMAGE_QUALITY,
+        PROFILE_LOGO_MAX_CHARS
+      );
+      updateCoverImage(resized);
     } finally {
       setUploading(false);
     }
@@ -45,13 +70,14 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (uploading) return;
     onSaveMusic({
       ...config,
       enabled,
       youtubeUrl: youtubeUrl.trim(),
       title: title.trim() || 'เพลงโปรด',
       artist: artist.trim(),
-      coverImage: coverImage.trim(),
+      coverImage: coverImageRef.current.trim(),
       autoplay,
     });
   };
@@ -158,7 +184,12 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
               }}
             >
               {coverImage ? (
-                <img src={coverImage} alt="รูปปกเพลง" className="h-full w-full object-cover" />
+                <img
+                  src={coverImage}
+                  alt="รูปปกเพลง"
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <Music className="h-4 w-4" style={{ color: palette.accent }} aria-hidden="true" />
               )}
@@ -170,14 +201,18 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
                 className="mb-1 block text-xs font-semibold"
                 style={{ color: palette.textMuted }}
               >
-                รูปปกเพลง (อัปโหลดหรือวางลิงก์)
+                รูปปกเพลง (อัปโหลด 160px JPEG หรือวางลิงก์)
               </label>
               <input
                 id="bar-music-cover-url"
                 type="text"
-                value={coverImage}
-                onChange={(e) => setCoverImage(e.target.value)}
-                placeholder="URL รูปปก (หรือกดอัปโหลดด้านขวา)"
+                value={coverImage.startsWith('data:') ? '' : coverImage}
+                onChange={(e) => updateCoverImage(e.target.value)}
+                placeholder={
+                  coverImage.startsWith('data:')
+                    ? 'อัปโหลดรูปปกแล้ว (วาง URL ใหม่เพื่อเปลี่ยน)'
+                    : 'URL รูปปก (หรือกดอัปโหลดด้านขวา)'
+                }
                 className="min-h-[42px] w-full min-w-0 rounded-2xl px-3.5 text-xs outline-none focus:ring-2"
                 style={{
                   backgroundColor: palette.bg,
@@ -206,7 +241,7 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
             {coverImage && (
               <button
                 type="button"
-                onClick={() => setCoverImage('')}
+                onClick={() => updateCoverImage('')}
                 aria-label="ลบรูปปกเพลง"
                 className="flex min-h-[42px] items-center gap-1 whitespace-nowrap rounded-full bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100"
               >
@@ -217,11 +252,12 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
 
             <button
               type="submit"
-              className="flex min-h-[42px] items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-transform active:scale-95"
+              disabled={uploading}
+              className="flex min-h-[42px] items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-transform active:scale-95 disabled:opacity-60"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}
             >
               <Save className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              บันทึกเพลง
+              {uploading ? 'กำลังย่อรูป...' : 'บันทึกเพลง'}
             </button>
           </div>
         </div>

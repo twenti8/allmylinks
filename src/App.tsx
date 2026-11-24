@@ -390,7 +390,7 @@ export default function App() {
       const resized = await resizeImageToDataUrl(
         file,
         PROFILE_LOGO_MAX_PX,
-        'webp',
+        'jpeg',
         PROFILE_LOGO_QUALITY,
         PROFILE_LOGO_MAX_CHARS
       );
@@ -562,7 +562,7 @@ export default function App() {
                 }}
               >
                 <ImagePlus className="h-3.5 w-3.5" style={{ color: palette.accent }} aria-hidden="true" />
-                <span>เปลี่ยนรูปโลโก้ (180px)</span>
+                <span>เปลี่ยนรูปโลโก้ (160px)</span>
                 <input
                   type="file"
                   accept="image/*"

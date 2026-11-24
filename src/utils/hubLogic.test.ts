@@ -243,24 +243,32 @@ test('isNonEmptyCloudPayload rejects {} and empty values while sanitizeAndParseH
   assert.equal(cloudParsed.passcode, '5678');
 });
 
-test('calculateContainedDimensions caps profile logos to 180x180 and profileImage key round-trips identically', () => {
-  assert.equal(PROFILE_LOGO_MAX_PX, 180);
+test('calculateContainedDimensions caps all uploaded images to 160x160 JPEG 0.75 and round-trips profile, link, and music images', () => {
+  assert.equal(PROFILE_LOGO_MAX_PX, 160);
   assert.equal(PROFILE_LOGO_QUALITY, 0.75);
   assert.equal(PROFILE_LOGO_MAX_CHARS, 30000);
 
-  assert.deepEqual(calculateContainedDimensions(1200, 800, 180), { width: 180, height: 120 });
-  assert.deepEqual(calculateContainedDimensions(600, 1200, 180), { width: 90, height: 180 });
-  assert.deepEqual(calculateContainedDimensions(120, 100, 180), { width: 120, height: 100 });
+  assert.deepEqual(calculateContainedDimensions(1200, 800, 160), { width: 160, height: 107 });
+  assert.deepEqual(calculateContainedDimensions(600, 1200, 160), { width: 80, height: 160 });
+  assert.deepEqual(calculateContainedDimensions(120, 100, 160), { width: 120, height: 100 });
 
+  const sampleJpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/';
+  const base = createDefaultHubData();
   const sampleData = {
-    ...createDefaultHubData(),
-    profileImage: 'data:image/webp;base64,UklGRkAAAABXRUJQVlA4',
+    ...base,
+    profileImage: sampleJpeg,
+    links: [{ ...base.links[0], icon: sampleJpeg }],
+    music: { ...base.music, coverImage: sampleJpeg },
   };
   const postedPayload = JSON.parse(JSON.stringify({ data: sampleData }));
-  assert.equal(postedPayload.data.profileImage, 'data:image/webp;base64,UklGRkAAAABXRUJQVlA4');
+  assert.equal(postedPayload.data.profileImage, sampleJpeg);
+  assert.equal(postedPayload.data.links[0].icon, sampleJpeg);
+  assert.equal(postedPayload.data.music.coverImage, sampleJpeg);
   const hydrated = sanitizeAndParseHubData(postedPayload.data);
   assert.ok(hydrated);
-  assert.equal(hydrated.profileImage, postedPayload.data.profileImage);
+  assert.equal(hydrated.profileImage, sampleJpeg);
+  assert.equal(hydrated.links[0].icon, sampleJpeg);
+  assert.equal(hydrated.music.coverImage, sampleJpeg);
 });
 
 test('extractUpdatedDataFromPostResponse extracts Google Drive updatedData cleanly and ignores empty responses', () => {

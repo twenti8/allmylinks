@@ -1,20 +1,20 @@
 import {
   PROFILE_LOGO_MAX_CHARS,
-  PROFILE_LOGO_MAX_PX,
-  PROFILE_LOGO_QUALITY,
+  UPLOAD_IMAGE_MAX_PX,
+  UPLOAD_IMAGE_QUALITY,
   calculateContainedDimensions,
 } from './hubLogic';
 
 /**
  * Resizes and compresses an uploaded image using HTMLCanvasElement so dimensions never exceed
- * `maxDimension` (default 150x150px for profile logos) and encodes as `image/jpeg` at
- * `quality` (default 0.7), keeping payloads ultra-compact for localStorage and Google Sheets.
+ * `maxDimension` (default 160x160px) and encodes as `image/jpeg` at `quality` (default 0.75),
+ * keeping Base64 payloads compact for localStorage and Google Sheets cross-device sync.
  */
 export function resizeImageToDataUrl(
   file: File,
-  maxDimension = PROFILE_LOGO_MAX_PX,
-  format: 'png' | 'webp' | 'jpeg' = 'webp',
-  quality = PROFILE_LOGO_QUALITY,
+  maxDimension = UPLOAD_IMAGE_MAX_PX,
+  format: 'png' | 'webp' | 'jpeg' = 'jpeg',
+  quality = UPLOAD_IMAGE_QUALITY,
   maxChars = PROFILE_LOGO_MAX_CHARS
 ): Promise<string> {
   return new Promise((resolve, reject) => {

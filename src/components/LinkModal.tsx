@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
   Globe,
@@ -13,8 +13,8 @@ import {
 import type { LinkItem, ThemePalette } from '../types/hub';
 import {
   PROFILE_LOGO_MAX_CHARS,
-  PROFILE_LOGO_MAX_PX,
-  PROFILE_LOGO_QUALITY,
+  UPLOAD_IMAGE_MAX_PX,
+  UPLOAD_IMAGE_QUALITY,
   extractHostname,
   formatLinkDecoration,
   getFaviconUrl,
@@ -62,10 +62,16 @@ export const LinkModal: React.FC<LinkModalProps> = ({
   const [url, setUrl] = useState(editingLink?.url || '');
   const [category, setCategory] = useState(editingLink?.category || '');
   const [icon, setIcon] = useState(initialIcon);
+  const iconRef = useRef<string>(initialIcon);
   const [iconMode, setIconMode] = useState<IconMode>(initialMode);
   const [autoDecorate, setAutoDecorate] = useState(initialParsed.decorated);
   const [error, setError] = useState('');
   const [resizing, setResizing] = useState(false);
+
+  const updateIcon = (nextIcon: string) => {
+    iconRef.current = nextIcon;
+    setIcon(nextIcon);
+  };
 
   useEffect(() => {
     if (open) {
@@ -77,12 +83,12 @@ export const LinkModal: React.FC<LinkModalProps> = ({
         setUrl(editingLink.url);
         setCategory(editingLink.category || '');
         const existingIcon = editingLink.icon || '🔗';
-        setIcon(existingIcon);
+        updateIcon(existingIcon);
         if (existingIcon.startsWith('data:')) {
           setIconMode('upload');
         } else if (existingIcon.includes('google.com/s2/favicons')) {
           setIconMode('favicon');
-        } else if (existingIcon.startsWith('http')) {
+        } else if (existingIcon.startsWith('http') || existingIcon.startsWith('/')) {
           setIconMode('imageUrl');
         } else {
           setIconMode('emoji');
@@ -92,7 +98,7 @@ export const LinkModal: React.FC<LinkModalProps> = ({
         setSubtitle('');
         setUrl('');
         setCategory('');
-        setIcon('🎀');
+        updateIcon('🎀');
         setIconMode('emoji');
         setAutoDecorate(true);
       }
@@ -106,7 +112,7 @@ export const LinkModal: React.FC<LinkModalProps> = ({
     setUrl(nextUrl);
     if (iconMode === 'favicon') {
       const fav = getFaviconUrl(nextUrl);
-      if (fav) setIcon(fav);
+      if (fav) updateIcon(fav);
     }
   };
 
@@ -115,9 +121,9 @@ export const LinkModal: React.FC<LinkModalProps> = ({
     setError('');
     if (mode === 'favicon') {
       const fav = getFaviconUrl(url);
-      if (fav) setIcon(fav);
-    } else if (mode === 'emoji' && (icon.startsWith('data:') || icon.startsWith('http'))) {
-      setIcon('🎀');
+      if (fav) updateIcon(fav);
+    } else if (mode === 'emoji' && (iconRef.current.startsWith('data:') || iconRef.current.startsWith('http'))) {
+      updateIcon('🎀');
     }
   };
 
@@ -130,12 +136,12 @@ export const LinkModal: React.FC<LinkModalProps> = ({
     try {
       const dataUrl = await resizeImageToDataUrl(
         file,
-        PROFILE_LOGO_MAX_PX,
-        'webp',
-        PROFILE_LOGO_QUALITY,
+        UPLOAD_IMAGE_MAX_PX,
+        'jpeg',
+        UPLOAD_IMAGE_QUALITY,
         PROFILE_LOGO_MAX_CHARS
       );
-      setIcon(dataUrl);
+      updateIcon(dataUrl);
       setIconMode('upload');
     } catch {
       setError('ไม่สามารถอัปโหลดรูปภาพนี้ได้');
@@ -146,6 +152,7 @@ export const LinkModal: React.FC<LinkModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (resizing) return;
     if (!url.trim()) {
       setError('กรุณาระบุ URL ปลายทาง');
       return;
@@ -156,8 +163,9 @@ export const LinkModal: React.FC<LinkModalProps> = ({
     }
 
     const formatted = formatLinkDecoration(title, subtitle, autoDecorate);
+    const latestIcon = iconRef.current.trim();
     const finalIcon =
-      iconMode === 'favicon' ? getFaviconUrl(url) || icon || '🔗' : icon.trim() || '🔗';
+      iconMode === 'favicon' ? getFaviconUrl(url) || latestIcon || '🔗' : latestIcon || '🔗';
 
     onSave({
       id: editingLink?.id,
@@ -252,6 +260,7 @@ export const LinkModal: React.FC<LinkModalProps> = ({
                   <img
                     src={previewIcon}
                     alt="ตัวอย่างไอคอน"
+                    referrerPolicy="no-referrer"
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -403,7 +412,7 @@ export const LinkModal: React.FC<LinkModalProps> = ({
                 {previewHost && (
                   <button
                     type="button"
-                    onClick={() => setIcon(getFaviconUrl(url))}
+                    onClick={() => updateIcon(getFaviconUrl(url))}
                     className="shrink-0 font-semibold underline"
                     style={{ color: palette.accent }}
                   >
@@ -424,7 +433,7 @@ export const LinkModal: React.FC<LinkModalProps> = ({
                   }}
                 >
                   <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span>{resizing ? 'กำลังย่อขนาด...' : 'เลือกไฟล์รูปภาพ (แปลง Base64)'}</span>
+                  <span>{resizing ? 'กำลังย่อขนาด...' : 'เลือกไฟล์รูปภาพ (160px JPEG)'}</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -448,8 +457,8 @@ export const LinkModal: React.FC<LinkModalProps> = ({
                 <input
                   id="link-image-url-input"
                   type="url"
-                  value={icon.startsWith('http') ? icon : ''}
-                  onChange={(e) => setIcon(e.target.value)}
+                  value={icon.startsWith('http') || icon.startsWith('/') ? icon : ''}
+                  onChange={(e) => updateIcon(e.target.value)}
                   placeholder="วางลิงก์รูปภาพ https://..."
                   className="w-full rounded-full px-4 py-2 text-xs outline-none focus:ring-2"
                   style={{
@@ -467,7 +476,7 @@ export const LinkModal: React.FC<LinkModalProps> = ({
                   <button
                     key={emoji}
                     type="button"
-                    onClick={() => setIcon(emoji)}
+                    onClick={() => updateIcon(emoji)}
                     aria-label={`เลือกไอคอน ${emoji}`}
                     className="flex h-9 w-9 items-center justify-center rounded-full text-base transition-transform hover:scale-110"
                     style={{
@@ -649,10 +658,11 @@ export const LinkModal: React.FC<LinkModalProps> = ({
             </button>
             <button
               type="submit"
-              className="min-h-[42px] whitespace-nowrap rounded-full px-6 py-2 text-xs font-semibold transition-transform active:scale-95 sm:text-sm"
+              disabled={resizing}
+              className="min-h-[42px] whitespace-nowrap rounded-full px-6 py-2 text-xs font-semibold transition-transform active:scale-95 disabled:opacity-60 sm:text-sm"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}
             >
-              {editingLink ? 'บันทึกการแก้ไข' : 'เพิ่มลิงก์'}
+              {resizing ? 'กำลังย่อรูป...' : editingLink ? 'บันทึกการแก้ไข' : 'เพิ่มลิงก์'}
             </button>
           </div>
         </form>
