@@ -17,12 +17,16 @@ export interface LinkItem {
 
 export interface MusicConfig {
   enabled: boolean;
+  showPlayer?: boolean;
   youtubeUrl: string;
   title: string;
+  songTitle?: string;
   artist: string;
   coverImage: string;
+  musicCover?: string;
   volume: number; // 0 - 100
   autoplay: boolean;
+  autoPlay?: boolean;
   compactMode: boolean;
 }
 
@@ -40,6 +44,11 @@ export interface HubData {
   categories: string[];
   links: LinkItem[];
   music: MusicConfig;
+  youtubeUrl?: string;
+  songTitle?: string;
+  musicCover?: string;
+  showPlayer?: boolean;
+  autoPlay?: boolean;
   iosConfig: IosConfig;
   passcode: string;
   updatedAt: string;

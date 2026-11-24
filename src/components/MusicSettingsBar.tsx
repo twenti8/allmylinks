@@ -5,18 +5,21 @@ import {
   PROFILE_LOGO_MAX_CHARS,
   UPLOAD_IMAGE_MAX_PX,
   UPLOAD_IMAGE_QUALITY,
+  isImageSource,
 } from '../utils/hubLogic';
 import { resizeImageToDataUrl } from '../utils/imageResize';
 
 interface MusicSettingsBarProps {
   config: MusicConfig;
   palette: ThemePalette;
+  onPreviewCover?: (coverImage: string) => void;
   onSaveMusic: (updated: MusicConfig) => void;
 }
 
 export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
   config,
   palette,
+  onPreviewCover,
   onSaveMusic,
 }) => {
   const [enabled, setEnabled] = useState(config.enabled);
@@ -35,19 +38,27 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
 
   useEffect(() => {
     setEnabled(config.enabled);
+  }, [config.enabled]);
+
+  useEffect(() => {
     setYoutubeUrl(config.youtubeUrl);
+  }, [config.youtubeUrl]);
+
+  useEffect(() => {
     setTitle(config.title);
+  }, [config.title]);
+
+  useEffect(() => {
     setArtist(config.artist);
+  }, [config.artist]);
+
+  useEffect(() => {
     updateCoverImage(config.coverImage);
+  }, [config.coverImage]);
+
+  useEffect(() => {
     setAutoplay(config.autoplay);
-  }, [
-    config.enabled,
-    config.youtubeUrl,
-    config.title,
-    config.artist,
-    config.coverImage,
-    config.autoplay,
-  ]);
+  }, [config.autoplay]);
 
   const handleUploadCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -63,22 +74,30 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
         PROFILE_LOGO_MAX_CHARS
       );
       updateCoverImage(resized);
+      onPreviewCover?.(resized);
     } finally {
       setUploading(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     if (uploading) return;
+    const cleanUrl = youtubeUrl.trim();
+    const cleanTitle = title.trim() || 'เพลงโปรด';
+    const cleanCover = coverImageRef.current.trim();
     onSaveMusic({
       ...config,
       enabled,
-      youtubeUrl: youtubeUrl.trim(),
-      title: title.trim() || 'เพลงโปรด',
+      showPlayer: enabled,
+      youtubeUrl: cleanUrl,
+      title: cleanTitle,
+      songTitle: cleanTitle,
       artist: artist.trim(),
-      coverImage: coverImageRef.current.trim(),
+      coverImage: cleanCover,
+      musicCover: cleanCover,
       autoplay,
+      autoPlay: autoplay,
     });
   };
 
@@ -183,9 +202,9 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
                 border: `1px solid ${palette.cardBorder}`,
               }}
             >
-              {coverImage ? (
+              {isImageSource(coverImage) ? (
                 <img
-                  src={coverImage}
+                  src={coverImage.trim()}
                   alt="รูปปกเพลง"
                   referrerPolicy="no-referrer"
                   className="h-full w-full object-cover"
@@ -201,7 +220,7 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
                 className="mb-1 block text-xs font-semibold"
                 style={{ color: palette.textMuted }}
               >
-                รูปปกเพลง (อัปโหลด 160px JPEG หรือวางลิงก์)
+                รูปปกเพลง (อัปโหลด 140px JPEG หรือวางลิงก์)
               </label>
               <input
                 id="bar-music-cover-url"
@@ -251,7 +270,8 @@ export const MusicSettingsBar: React.FC<MusicSettingsBarProps> = ({
             )}
 
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={uploading}
               className="flex min-h-[42px] items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-transform active:scale-95 disabled:opacity-60"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}

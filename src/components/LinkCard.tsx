@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import type { LinkItem, ThemePalette } from '../types/hub';
-import { normalizeUrl } from '../utils/hubLogic';
+import { isImageSource, normalizeUrl } from '../utils/hubLogic';
 
 interface LinkCardProps {
   link: LinkItem;
@@ -31,12 +31,7 @@ export const LinkCard: React.FC<LinkCardProps> = ({
   }, [link.icon]);
 
   const trimmedIcon = (link.icon || '').trim();
-  const isImageSrc =
-    !imgFailed &&
-    (trimmedIcon.startsWith('data:') ||
-      trimmedIcon.startsWith('http://') ||
-      trimmedIcon.startsWith('https://') ||
-      trimmedIcon.startsWith('/'));
+  const isImageSrc = !imgFailed && isImageSource(trimmedIcon);
 
   return (
     <div className="group flex flex-col gap-2">
@@ -63,7 +58,7 @@ export const LinkCard: React.FC<LinkCardProps> = ({
         >
           {isImageSrc ? (
             <img
-              src={link.icon}
+              src={trimmedIcon}
               alt={link.title}
               referrerPolicy="no-referrer"
               onError={() => setImgFailed(true)}

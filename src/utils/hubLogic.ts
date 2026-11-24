@@ -9,11 +9,65 @@ export const DEFAULT_PASSCODE = '1234';
 export const GOOGLE_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbzGGsKII9wIZExoBB038USbMOC2O3Im6FkgK6szNsFiO70gViDiNKnR-GS6gIk1akMq/exec';
 export const STORAGE_DATA_KEY = 'pastel_link_hub_data_v1';
-export const UPLOAD_IMAGE_MAX_PX = 160;
-export const UPLOAD_IMAGE_QUALITY = 0.75;
+export const UPLOAD_IMAGE_MAX_PX = 140;
+export const UPLOAD_IMAGE_QUALITY = 0.7;
 export const PROFILE_LOGO_MAX_PX = UPLOAD_IMAGE_MAX_PX;
 export const PROFILE_LOGO_QUALITY = UPLOAD_IMAGE_QUALITY;
 export const PROFILE_LOGO_MAX_CHARS = 30000;
+export const POST_SAVE_GET_COOLDOWN_MS = 5000;
+
+export function shouldSuppressCloudPull(params: {
+  isSaving: boolean;
+  lastSaveAt: number;
+  now?: number;
+  cooldownMs?: number;
+}): boolean {
+  if (params.isSaving) return true;
+  const { lastSaveAt, now = Date.now(), cooldownMs = POST_SAVE_GET_COOLDOWN_MS } = params;
+  if (!lastSaveAt || lastSaveAt <= 0) return false;
+  return now - lastSaveAt < cooldownMs;
+}
+
+export function syncMusicFields(data: HubData): HubData {
+  const m = data.music;
+  const enabled = Boolean(m.enabled);
+  const youtubeUrl = (m.youtubeUrl || '').trim();
+  const title = (m.title || '').trim() || 'เพลงโปรด';
+  const coverImage = (m.coverImage || '').trim();
+  const autoplay = Boolean(m.autoplay);
+
+  return {
+    ...data,
+    music: {
+      ...m,
+      enabled,
+      showPlayer: enabled,
+      youtubeUrl,
+      title,
+      songTitle: title,
+      coverImage,
+      musicCover: coverImage,
+      autoplay,
+      autoPlay: autoplay,
+    },
+    youtubeUrl,
+    songTitle: title,
+    musicCover: coverImage,
+    showPlayer: enabled,
+    autoPlay: autoplay,
+  };
+}
+
+export function isImageSource(value: string | null | undefined): boolean {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return false;
+  return (
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/')
+  );
+}
 
 export function calculateContainedDimensions(
   srcWidth: number,
@@ -116,14 +170,23 @@ export function createDefaultHubData(): HubData {
     ],
     music: {
       enabled: true,
+      showPlayer: true,
       youtubeUrl: 'https://www.youtube.com/watch?v=lTRiuFIWV54',
       title: '1 A.M Study Session 📚',
+      songTitle: '1 A.M Study Session 📚',
       artist: 'Lofi Girl · Chill Beats',
       coverImage: '',
+      musicCover: '',
       volume: 45,
       autoplay: false,
+      autoPlay: false,
       compactMode: true,
     },
+    youtubeUrl: 'https://www.youtube.com/watch?v=lTRiuFIWV54',
+    songTitle: '1 A.M Study Session 📚',
+    musicCover: '',
+    showPlayer: true,
+    autoPlay: false,
     iosConfig: {
       appName: 'Pastel Link Hub',
       appIcon: DEFAULT_AVATAR_SVG,
@@ -379,9 +442,11 @@ export function buildWebAppManifest(data: HubData): Record<string, unknown> {
   const iconSrc = data.iosConfig.appIcon || data.profileImage || DEFAULT_AVATAR_SVG;
   const mimeType = iconSrc.startsWith('data:image/svg+xml')
     ? 'image/svg+xml'
-    : iconSrc.startsWith('data:image/webp')
-      ? 'image/webp'
-      : 'image/png';
+    : iconSrc.startsWith('data:image/jpeg')
+      ? 'image/jpeg'
+      : iconSrc.startsWith('data:image/webp')
+        ? 'image/webp'
+        : 'image/png';
 
   return {
     name: appName,
@@ -442,7 +507,50 @@ export function sanitizeAndParseHubData(raw: unknown): HubData | null {
       ? obj.profileImage.trim()
       : defaults.profileImage;
 
-  return {
+  const resolvedShowPlayer =
+    typeof musicRaw.enabled === 'boolean'
+      ? musicRaw.enabled
+      : typeof musicRaw.showPlayer === 'boolean'
+        ? musicRaw.showPlayer
+        : typeof obj.showPlayer === 'boolean'
+          ? obj.showPlayer
+          : defaults.music.enabled;
+
+  const resolvedYoutubeUrl =
+    typeof musicRaw.youtubeUrl === 'string'
+      ? musicRaw.youtubeUrl.trim()
+      : typeof obj.youtubeUrl === 'string'
+        ? obj.youtubeUrl.trim()
+        : defaults.music.youtubeUrl;
+
+  const resolvedSongTitle =
+    typeof musicRaw.title === 'string' && musicRaw.title.trim()
+      ? musicRaw.title.trim()
+      : typeof musicRaw.songTitle === 'string' && musicRaw.songTitle.trim()
+        ? musicRaw.songTitle.trim()
+        : typeof obj.songTitle === 'string' && obj.songTitle.trim()
+          ? obj.songTitle.trim()
+          : defaults.music.title;
+
+  const resolvedMusicCover =
+    typeof musicRaw.coverImage === 'string'
+      ? musicRaw.coverImage.trim()
+      : typeof musicRaw.musicCover === 'string'
+        ? musicRaw.musicCover.trim()
+        : typeof obj.musicCover === 'string'
+          ? obj.musicCover.trim()
+          : defaults.music.coverImage;
+
+  const resolvedAutoPlay =
+    typeof musicRaw.autoplay === 'boolean'
+      ? musicRaw.autoplay
+      : typeof musicRaw.autoPlay === 'boolean'
+        ? musicRaw.autoPlay
+        : typeof obj.autoPlay === 'boolean'
+          ? obj.autoPlay
+          : defaults.music.autoplay;
+
+  return syncMusicFields({
     profileName:
       typeof obj.profileName === 'string' && obj.profileName.trim()
         ? obj.profileName
@@ -458,20 +566,17 @@ export function sanitizeAndParseHubData(raw: unknown): HubData | null {
     categories,
     links,
     music: {
-      enabled: typeof musicRaw.enabled === 'boolean' ? musicRaw.enabled : defaults.music.enabled,
-      youtubeUrl:
-        typeof musicRaw.youtubeUrl === 'string' ? musicRaw.youtubeUrl : defaults.music.youtubeUrl,
-      title:
-        typeof musicRaw.title === 'string' && musicRaw.title.trim()
-          ? musicRaw.title
-          : defaults.music.title,
+      enabled: resolvedShowPlayer,
+      showPlayer: resolvedShowPlayer,
+      youtubeUrl: resolvedYoutubeUrl,
+      title: resolvedSongTitle,
+      songTitle: resolvedSongTitle,
       artist: typeof musicRaw.artist === 'string' ? musicRaw.artist : defaults.music.artist,
-      coverImage:
-        typeof musicRaw.coverImage === 'string'
-          ? musicRaw.coverImage.trim()
-          : defaults.music.coverImage,
+      coverImage: resolvedMusicCover,
+      musicCover: resolvedMusicCover,
       volume: parsedVolume,
-      autoplay: typeof musicRaw.autoplay === 'boolean' ? musicRaw.autoplay : defaults.music.autoplay,
+      autoplay: resolvedAutoPlay,
+      autoPlay: resolvedAutoPlay,
       compactMode:
         typeof musicRaw.compactMode === 'boolean'
           ? musicRaw.compactMode
@@ -495,15 +600,56 @@ export function sanitizeAndParseHubData(raw: unknown): HubData | null {
       typeof obj.updatedAt === 'string' && obj.updatedAt.trim()
         ? obj.updatedAt
         : new Date().toISOString(),
-  };
+  });
+}
+
+function hasRecognizedHubFields(candidate: unknown): candidate is Record<string, unknown> {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return false;
+  const obj = candidate as Record<string, unknown>;
+  return (
+    Array.isArray(obj.links) ||
+    typeof obj.profileName === 'string' ||
+    typeof obj.profileImage === 'string' ||
+    typeof obj.theme === 'string' ||
+    (Boolean(obj.music) && typeof obj.music === 'object') ||
+    typeof obj.youtubeUrl === 'string' ||
+    typeof obj.songTitle === 'string'
+  );
 }
 
 export function extractUpdatedDataFromPostResponse(json: unknown): HubData | null {
   if (!json || typeof json !== 'object') return null;
   const record = json as Record<string, unknown>;
   if (!('updatedData' in record)) return null;
-  if (!isNonEmptyCloudPayload(record.updatedData)) return null;
-  return sanitizeAndParseHubData(record.updatedData);
+
+  let candidate: unknown = record.updatedData;
+  if (typeof candidate === 'string') {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      return null;
+    }
+  }
+  if (
+    candidate &&
+    typeof candidate === 'object' &&
+    !Array.isArray(candidate) &&
+    'data' in candidate &&
+    !hasRecognizedHubFields(candidate)
+  ) {
+    candidate = (candidate as Record<string, unknown>).data;
+    if (typeof candidate === 'string') {
+      try {
+        candidate = JSON.parse(candidate);
+      } catch {
+        return null;
+      }
+    }
+  }
+  if (!isNonEmptyCloudPayload(candidate) || !hasRecognizedHubFields(candidate)) {
+    return null;
+  }
+  return sanitizeAndParseHubData(candidate);
 }
 
 export function buildGoogleAppsScriptCode(): string {
@@ -671,7 +817,11 @@ export function buildStandaloneHtml(data: HubData): string {
     var HUB_DATA = ${serialized};
     var SCRIPT_URL = ${safeScriptUrl};
     var activeCat = 'all';
-    function isImg(val) { return typeof val === 'string' && (val.startsWith('data:') || val.startsWith('http')); }
+    function isImg(val) {
+      if (typeof val !== 'string') return false;
+      var t = val.trim();
+      return t.startsWith('data:image/') || t.startsWith('http://') || t.startsWith('https://') || t.startsWith('/');
+    }
     function getAutoCategories(links) {
       var seen = {};
       var list = [];

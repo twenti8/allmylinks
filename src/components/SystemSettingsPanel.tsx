@@ -41,8 +41,8 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
   const [passError, setPassError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePassSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePassSubmit = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     const cleaned = newPass.trim();
     if (cleaned.length < 4) {
       setPassError(true);
@@ -139,7 +139,8 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
               }}
             />
             <button
-              type="submit"
+              type="button"
+              onClick={handlePassSubmit}
               className="min-h-[44px] shrink-0 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-transform active:scale-95"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}
             >

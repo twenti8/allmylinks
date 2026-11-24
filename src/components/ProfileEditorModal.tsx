@@ -10,6 +10,7 @@ import {
   type ProfileFrameId,
   extractUniqueCategories,
   formatProfileFrame,
+  isImageSource,
   parseProfileFrame,
 } from '../utils/hubLogic';
 import { resizeImageToDataUrl } from '../utils/imageResize';
@@ -89,8 +90,8 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
     setError('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     if (uploading) return;
     const cleanedCore = coreName.trim();
     if (!cleanedCore) {
@@ -163,7 +164,7 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
                 style={{ border: `2.5px solid ${palette.accent}` }}
               >
                 <img
-                  src={profileImage || DEFAULT_AVATAR_SVG}
+                  src={isImageSource(profileImage) ? profileImage.trim() : DEFAULT_AVATAR_SVG}
                   alt="ตัวอย่างรูปโลโก้"
                   referrerPolicy="no-referrer"
                   className="h-full w-full rounded-full object-cover"
@@ -203,8 +204,8 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
 
                 <p className="text-[11px]" style={{ color: palette.textMuted }}>
                   {isDataUri && profileImage !== DEFAULT_AVATAR_SVG
-                    ? 'ใช้รูปที่อัปโหลดแล้ว (ย่อขนาด ≤160×160px JPEG 0.75 อัตโนมัติ)'
-                    : 'ย่อขนาดอัปโหลดสูงสุด 160×160px (JPEG 0.75) เพื่อซิงก์ข้ามเครื่องไว'}
+                    ? 'ใช้รูปที่อัปโหลดแล้ว (ย่อขนาด ≤140×140px JPEG 0.7 อัตโนมัติ)'
+                    : 'ย่อขนาดอัปโหลดสูงสุด 140×140px (JPEG 0.7) เพื่อซิงก์ข้ามเครื่องไว'}
                 </p>
               </div>
             </div>
@@ -345,7 +346,8 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
               ยกเลิก
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={uploading}
               className="min-h-[42px] whitespace-nowrap rounded-full px-6 py-2 text-xs font-semibold transition-transform active:scale-95 disabled:opacity-60 sm:text-sm"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}

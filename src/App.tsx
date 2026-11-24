@@ -28,6 +28,7 @@ import type {
   ThemeId,
 } from './types/hub';
 import {
+  DEFAULT_AVATAR_SVG,
   PROFILE_LOGO_MAX_CHARS,
   PROFILE_LOGO_MAX_PX,
   PROFILE_LOGO_QUALITY,
@@ -35,8 +36,11 @@ import {
   createDefaultHubData,
   extractUniqueCategories,
   filterLinksByCategory,
+  isImageSource,
   reorderLinks,
   sanitizeAndParseHubData,
+  shouldSuppressCloudPull,
+  syncMusicFields,
 } from './utils/hubLogic';
 import { resizeImageToDataUrl } from './utils/imageResize';
 import {
@@ -56,9 +60,10 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   const commitLocalData = useCallback((nextData: HubData) => {
-    latestDataRef.current = nextData;
-    setData(nextData);
-    saveLocalHubData(nextData);
+    const normalized = syncMusicFields(nextData);
+    latestDataRef.current = normalized;
+    saveLocalHubData(normalized);
+    setData(normalized);
   }, []);
 
   // Modals
@@ -93,6 +98,7 @@ export default function App() {
   const isPullingRef = useRef(false);
   const isSavingRef = useRef(false);
   const saveSeqRef = useRef(0);
+  const lastSaveAtRef = useRef(0);
   const lastPullAtRef = useRef(0);
 
   const hasOpenModalRef = useRef(false);
@@ -105,16 +111,42 @@ export default function App() {
   );
 
   // Hardcoded Cloud Sync on initial load & tab resume using GOOGLE_SCRIPT_URL directly
+  // Suppressed while saving (isSyncing) and for 5 seconds after any save so old cloud data cannot overwrite fresh edits
   const pullCloudData = useCallback(
     async (silent = true) => {
-      if (isPullingRef.current || isSavingRef.current) return;
+      if (isPullingRef.current) return;
+      if (
+        shouldSuppressCloudPull({
+          isSaving: isSavingRef.current,
+          lastSaveAt: lastSaveAtRef.current,
+          now: Date.now(),
+        })
+      ) {
+        if (!silent) {
+          showNotice('เพิ่งบันทึกข้อมูลล่าสุดแล้ว');
+        }
+        return;
+      }
 
       isPullingRef.current = true;
       lastPullAtRef.current = Date.now();
+      const pullStartSaveSeq = saveSeqRef.current;
       setSyncStatus({ state: 'syncing', message: 'กำลังซิงก์ข้อมูลจาก Google Sheets...' });
 
       try {
         const cloudData = await fetchFromGoogleSheets();
+        // Discard stale GET response if a save started or finished while this GET was in-flight
+        if (
+          isSavingRef.current ||
+          saveSeqRef.current !== pullStartSaveSeq ||
+          shouldSuppressCloudPull({
+            isSaving: false,
+            lastSaveAt: lastSaveAtRef.current,
+            now: Date.now(),
+          })
+        ) {
+          return;
+        }
         if (cloudData) {
           // Google Sheets is the source of truth: overwrite both React state and localStorage immediately
           commitLocalData(cloudData);
@@ -129,11 +161,16 @@ export default function App() {
           if (!silent) showNotice('ยังไม่มีข้อมูลบน Cloud');
         }
       } catch {
-        setSyncStatus({
-          state: 'error',
-          message: 'เชื่อมต่อ Google Sheets ไม่สำเร็จ (ใช้ข้อมูลในเครื่อง)',
-        });
-        if (!silent) showNotice('ดึงข้อมูลจาก Cloud ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        if (
+          !isSavingRef.current &&
+          saveSeqRef.current === pullStartSaveSeq
+        ) {
+          setSyncStatus({
+            state: 'error',
+            message: 'เชื่อมต่อ Google Sheets ไม่สำเร็จ (ใช้ข้อมูลในเครื่อง)',
+          });
+          if (!silent) showNotice('ดึงข้อมูลจาก Cloud ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        }
       } finally {
         isPullingRef.current = false;
       }
@@ -146,7 +183,16 @@ export default function App() {
 
     const handleResumeSync = () => {
       if (document.visibilityState === 'hidden') return;
-      if (hasOpenModalRef.current || isSavingRef.current || isPullingRef.current) return;
+      if (hasOpenModalRef.current || isPullingRef.current) return;
+      if (
+        shouldSuppressCloudPull({
+          isSaving: isSavingRef.current,
+          lastSaveAt: lastSaveAtRef.current,
+          now: Date.now(),
+        })
+      ) {
+        return;
+      }
       if (Date.now() - lastPullAtRef.current < 500) return;
 
       pullCloudData(true);
@@ -160,14 +206,16 @@ export default function App() {
     };
   }, [pullCloudData]);
 
-  // Optimistic UI: update UI + localStorage immediately (0ms), then sync to Google Sheets in background
+  // Optimistic UI: synchronously commit to localStorage + state immediately (0ms),
+  // suppress GET for 5 seconds, then POST complete latest JSON to Google Sheets
   const persistChanges = useCallback(
     async (nextData: HubData, pushCloud: boolean): Promise<PersistResult> => {
       const saveSeq = ++saveSeqRef.current;
-      const stamped: HubData = {
+      lastSaveAtRef.current = Date.now();
+      const stamped: HubData = syncMusicFields({
         ...nextData,
         updatedAt: new Date().toISOString(),
-      };
+      });
       commitLocalData(stamped);
 
       if (pushCloud) {
@@ -175,6 +223,7 @@ export default function App() {
         setSyncStatus({ state: 'syncing', message: 'กำลังซิงก์...' });
         try {
           const updatedFromCloud = await saveToGoogleSheets(stamped);
+          lastSaveAtRef.current = Date.now();
           lastPullAtRef.current = Date.now();
           if (updatedFromCloud && saveSeq === saveSeqRef.current) {
             commitLocalData(updatedFromCloud);
@@ -187,6 +236,7 @@ export default function App() {
           showNotice('บันทึกและซิงก์ข้อมูลขึ้น Google Sheets สำเร็จ');
           return { ok: true, cloudSynced: true };
         } catch {
+          lastSaveAtRef.current = Date.now();
           setSyncStatus({
             state: 'error',
             message: 'ซิงก์ Cloud ไม่สำเร็จ',
@@ -220,10 +270,14 @@ export default function App() {
   }, [autoCategories, activeCategory]);
 
   const handleSelectTheme = (themeId: ThemeId) => {
+    saveSeqRef.current += 1;
+    lastSaveAtRef.current = Date.now();
     commitLocalData({ ...latestDataRef.current, theme: themeId });
   };
 
   const handleUpdateCustomTheme = (nextCustom: CustomThemeColors) => {
+    saveSeqRef.current += 1;
+    lastSaveAtRef.current = Date.now();
     commitLocalData({
       ...latestDataRef.current,
       theme: 'custom',
@@ -232,6 +286,8 @@ export default function App() {
   };
 
   const handleUpdateMusicConfig = (partial: Partial<MusicConfig>) => {
+    saveSeqRef.current += 1;
+    lastSaveAtRef.current = Date.now();
     const base = latestDataRef.current;
     commitLocalData({
       ...base,
@@ -527,7 +583,7 @@ export default function App() {
             }}
           >
             <img
-              src={data.profileImage}
+              src={isImageSource(data.profileImage) ? data.profileImage.trim() : DEFAULT_AVATAR_SVG}
               alt={data.profileName}
               referrerPolicy="no-referrer"
               className="h-full w-full rounded-full object-cover"
@@ -562,7 +618,7 @@ export default function App() {
                 }}
               >
                 <ImagePlus className="h-3.5 w-3.5" style={{ color: palette.accent }} aria-hidden="true" />
-                <span>เปลี่ยนรูปโลโก้ (160px)</span>
+                <span>เปลี่ยนรูปโลโก้ (140px)</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -738,6 +794,7 @@ export default function App() {
           <MusicSettingsBar
             config={data.music}
             palette={palette}
+            onPreviewCover={(nextCover) => handleUpdateMusicConfig({ coverImage: nextCover })}
             onSaveMusic={(updatedMusic) => {
               const current = latestDataRef.current;
               persistChanges({ ...current, music: updatedMusic }, true);

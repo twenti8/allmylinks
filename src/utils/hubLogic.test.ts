@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GOOGLE_SCRIPT_URL,
+  POST_SAVE_GET_COOLDOWN_MS,
   PROFILE_LOGO_MAX_CHARS,
   PROFILE_LOGO_MAX_PX,
   PROFILE_LOGO_QUALITY,
@@ -22,12 +23,15 @@ import {
   formatPlaybackTime,
   formatProfileFrame,
   getFaviconUrl,
+  isImageSource,
   isNonEmptyCloudPayload,
   normalizeUrl,
   parseLinkDecoration,
   parseProfileFrame,
   reorderLinks,
   sanitizeAndParseHubData,
+  shouldSuppressCloudPull,
+  syncMusicFields,
   validatePasscode,
 } from './hubLogic';
 import { buildCustomThemePalette, resolveActivePalette } from './themes';
@@ -243,14 +247,23 @@ test('isNonEmptyCloudPayload rejects {} and empty values while sanitizeAndParseH
   assert.equal(cloudParsed.passcode, '5678');
 });
 
-test('calculateContainedDimensions caps all uploaded images to 160x160 JPEG 0.75 and round-trips profile, link, and music images', () => {
-  assert.equal(PROFILE_LOGO_MAX_PX, 160);
-  assert.equal(PROFILE_LOGO_QUALITY, 0.75);
+test('calculateContainedDimensions caps all uploaded images to 140x140 JPEG 0.7 and isImageSource supports data:image/ and URLs', () => {
+  assert.equal(PROFILE_LOGO_MAX_PX, 140);
+  assert.equal(PROFILE_LOGO_QUALITY, 0.7);
   assert.equal(PROFILE_LOGO_MAX_CHARS, 30000);
 
-  assert.deepEqual(calculateContainedDimensions(1200, 800, 160), { width: 160, height: 107 });
-  assert.deepEqual(calculateContainedDimensions(600, 1200, 160), { width: 80, height: 160 });
-  assert.deepEqual(calculateContainedDimensions(120, 100, 160), { width: 120, height: 100 });
+  assert.deepEqual(calculateContainedDimensions(1200, 800, 140), { width: 140, height: 93 });
+  assert.deepEqual(calculateContainedDimensions(600, 1200, 140), { width: 70, height: 140 });
+  assert.deepEqual(calculateContainedDimensions(120, 100, 140), { width: 120, height: 100 });
+
+  assert.equal(isImageSource('data:image/jpeg;base64,/9j/4AAQ'), true);
+  assert.equal(isImageSource('data:image/png;base64,iVBOR'), true);
+  assert.equal(isImageSource('data:image/svg+xml;utf8,<svg/>'), true);
+  assert.equal(isImageSource('https://example.com/pic.jpg'), true);
+  assert.equal(isImageSource('http://example.com/pic.png'), true);
+  assert.equal(isImageSource('/assets/logo.png'), true);
+  assert.equal(isImageSource('🥞'), false);
+  assert.equal(isImageSource(''), false);
 
   const sampleJpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/';
   const base = createDefaultHubData();
@@ -297,4 +310,73 @@ test('extractUpdatedDataFromPostResponse extracts Google Drive updatedData clean
   assert.ok(parsed);
   assert.equal(parsed.profileImage, driveUrl);
   assert.equal(parsed.links[0].icon, linkDriveUrl);
+
+  // Wrapped { data: hubData } envelope unwraps cleanly instead of resetting to defaults
+  const wrappedParsed = extractUpdatedDataFromPostResponse({
+    status: 'success',
+    updatedData: {
+      data: {
+        profileName: 'Wrapped Hub',
+        theme: 'pink',
+        links: [],
+      },
+    },
+  });
+  assert.ok(wrappedParsed);
+  assert.equal(wrappedParsed.profileName, 'Wrapped Hub');
+  assert.equal(wrappedParsed.theme, 'pink');
+
+  // Non-HubData status object must return null rather than overwriting state with defaults
+  assert.equal(
+    extractUpdatedDataFromPostResponse({ status: 'success', updatedData: { status: 'saved' } }),
+    null
+  );
+});
+
+test('shouldSuppressCloudPull blocks GET while saving and within 5s post-save cooldown', () => {
+  assert.equal(POST_SAVE_GET_COOLDOWN_MS, 5000);
+  assert.equal(shouldSuppressCloudPull({ isSaving: true, lastSaveAt: 0, now: 10000 }), true);
+  assert.equal(shouldSuppressCloudPull({ isSaving: false, lastSaveAt: 10000, now: 14999 }), true);
+  assert.equal(shouldSuppressCloudPull({ isSaving: false, lastSaveAt: 10000, now: 15000 }), false);
+  assert.equal(shouldSuppressCloudPull({ isSaving: false, lastSaveAt: 0, now: 10000 }), false);
+});
+
+test('syncMusicFields and sanitizeAndParseHubData preserve youtubeUrl, songTitle, musicCover, showPlayer, and autoPlay', () => {
+  const base = createDefaultHubData();
+  const synced = syncMusicFields({
+    ...base,
+    music: {
+      ...base.music,
+      enabled: false,
+      youtubeUrl: 'https://youtu.be/5qap5aO4i9A',
+      title: 'Chill Lofi Beats',
+      coverImage: 'data:image/jpeg;base64,/9j/4AAQ',
+      autoplay: true,
+    },
+  });
+
+  assert.equal(synced.youtubeUrl, 'https://youtu.be/5qap5aO4i9A');
+  assert.equal(synced.songTitle, 'Chill Lofi Beats');
+  assert.equal(synced.musicCover, 'data:image/jpeg;base64,/9j/4AAQ');
+  assert.equal(synced.showPlayer, false);
+  assert.equal(synced.autoPlay, true);
+  assert.equal(synced.music.songTitle, 'Chill Lofi Beats');
+  assert.equal(synced.music.musicCover, 'data:image/jpeg;base64,/9j/4AAQ');
+  assert.equal(synced.music.showPlayer, false);
+  assert.equal(synced.music.autoPlay, true);
+
+  // Hydrating from top-level alias keys alone also populates music cleanly
+  const fromAliases = sanitizeAndParseHubData({
+    youtubeUrl: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+    songTitle: 'Study Stream',
+    musicCover: 'https://example.com/cover.jpg',
+    showPlayer: true,
+    autoPlay: true,
+  });
+  assert.ok(fromAliases);
+  assert.equal(fromAliases.music.youtubeUrl, 'https://www.youtube.com/watch?v=jfKfPfyJRdk');
+  assert.equal(fromAliases.music.title, 'Study Stream');
+  assert.equal(fromAliases.music.coverImage, 'https://example.com/cover.jpg');
+  assert.equal(fromAliases.music.enabled, true);
+  assert.equal(fromAliases.music.autoplay, true);
 });

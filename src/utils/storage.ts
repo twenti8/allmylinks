@@ -95,7 +95,14 @@ export async function fetchFromGoogleSheets(): Promise<HubData | null> {
   }
 
   const json = await response.json();
-  const payload = json && typeof json === 'object' && 'data' in json ? json.data : json;
+  let payload: unknown = json && typeof json === 'object' && 'data' in json ? json.data : json;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  }
   if (!isNonEmptyCloudPayload(payload)) return null;
 
   return sanitizeAndParseHubData(payload);

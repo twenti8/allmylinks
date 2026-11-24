@@ -32,8 +32,8 @@ export const PasscodeModal: React.FC<PasscodeModalProps> = ({
 
   if (!open) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     if (validatePasscode(input, expectedPasscode)) {
       setError('');
       onUnlock();
@@ -128,7 +128,8 @@ export const PasscodeModal: React.FC<PasscodeModalProps> = ({
               ยกเลิก
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-transform active:scale-95"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}
             >

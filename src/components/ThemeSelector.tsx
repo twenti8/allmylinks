@@ -243,7 +243,10 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
       <div className="mt-4 flex justify-start">
         <button
           type="button"
-          onClick={onSaveTheme}
+          onClick={(e) => {
+            e.preventDefault();
+            onSaveTheme();
+          }}
           className="flex min-h-[42px] items-center gap-1.5 whitespace-nowrap rounded-full px-5 text-xs font-semibold transition-transform active:scale-95"
           style={{ backgroundColor: palette.accent, color: palette.accentText }}
         >

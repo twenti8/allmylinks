@@ -6,9 +6,10 @@ import {
 } from './hubLogic';
 
 /**
- * Resizes and compresses an uploaded image using HTMLCanvasElement so dimensions never exceed
- * `maxDimension` (default 160x160px) and encodes as `image/jpeg` at `quality` (default 0.75),
- * keeping Base64 payloads compact for localStorage and Google Sheets cross-device sync.
+ * Resizes and compresses an uploaded image using FileReader + HTMLCanvasElement so dimensions
+ * never exceed `maxDimension` (default 140x140px) and encodes as `image/jpeg` at `quality`
+ * (default 0.7), producing a compact `data:image/jpeg;base64,...` string for immediate preview
+ * and cross-device Google Sheets sync.
  */
 export function resizeImageToDataUrl(
   file: File,

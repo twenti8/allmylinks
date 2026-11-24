@@ -18,6 +18,7 @@ import {
   extractHostname,
   formatLinkDecoration,
   getFaviconUrl,
+  isImageSource,
   parseLinkDecoration,
 } from '../utils/hubLogic';
 import { resizeImageToDataUrl } from '../utils/imageResize';
@@ -150,8 +151,8 @@ export const LinkModal: React.FC<LinkModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     if (resizing) return;
     if (!url.trim()) {
       setError('กรุณาระบุ URL ปลายทาง');
@@ -183,8 +184,8 @@ export const LinkModal: React.FC<LinkModalProps> = ({
     subtitle.trim() || 'คำอธิบายสั้นๆ ของลิงก์นี้',
     autoDecorate
   );
-  const previewIcon = iconMode === 'favicon' ? getFaviconUrl(url) || icon : icon;
-  const isImgIcon = previewIcon.startsWith('data:') || previewIcon.startsWith('http');
+  const previewIcon = (iconMode === 'favicon' ? getFaviconUrl(url) || icon : icon).trim();
+  const isImgIcon = isImageSource(previewIcon);
 
   return (
     <div
@@ -433,7 +434,7 @@ export const LinkModal: React.FC<LinkModalProps> = ({
                   }}
                 >
                   <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span>{resizing ? 'กำลังย่อขนาด...' : 'เลือกไฟล์รูปภาพ (160px JPEG)'}</span>
+                  <span>{resizing ? 'กำลังย่อขนาด...' : 'เลือกไฟล์รูปภาพ (140px JPEG)'}</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -657,7 +658,8 @@ export const LinkModal: React.FC<LinkModalProps> = ({
               ยกเลิก
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={resizing}
               className="min-h-[42px] whitespace-nowrap rounded-full px-6 py-2 text-xs font-semibold transition-transform active:scale-95 disabled:opacity-60 sm:text-sm"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}

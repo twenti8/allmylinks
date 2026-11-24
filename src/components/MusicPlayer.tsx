@@ -11,6 +11,7 @@ import {
   computeProgressPercent,
   extractYouTubeId,
   formatPlaybackTime,
+  isImageSource,
 } from '../utils/hubLogic';
 
 interface MusicPlayerProps {
@@ -258,9 +259,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   };
 
   const progressPercent = computeProgressPercent(currentTime, duration);
+  const customCover = isImageSource(config.coverImage) ? config.coverImage.trim() : '';
   const coverSrc =
     !coverFailed &&
-    (config.coverImage || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : ''));
+    (customCover || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : ''));
 
   return (
     <section
