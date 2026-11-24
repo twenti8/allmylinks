@@ -1,13 +1,12 @@
 import type { HubData, ThemeId } from '../types/hub';
 import {
-  DEFAULT_SCRIPT_URL,
+  GOOGLE_SCRIPT_URL,
   STORAGE_DATA_KEY,
-  STORAGE_SCRIPT_URL_KEY,
   buildCacheBustedScriptUrl,
   buildWebAppManifest,
   createDefaultHubData,
+  extractUpdatedDataFromPostResponse,
   isNonEmptyCloudPayload,
-  resolveScriptUrl,
   sanitizeAndParseHubData,
 } from './hubLogic';
 import { resolveActivePalette } from './themes';
@@ -35,27 +34,6 @@ export function saveLocalHubData(data: HubData): void {
   }
 }
 
-export function loadScriptUrl(defaultUrl: string = DEFAULT_SCRIPT_URL): string {
-  try {
-    const stored = localStorage.getItem(STORAGE_SCRIPT_URL_KEY);
-    return resolveScriptUrl(stored, defaultUrl);
-  } catch {
-    return resolveScriptUrl('', defaultUrl);
-  }
-}
-
-export function saveScriptUrl(url: string): void {
-  try {
-    const trimmed = url.trim();
-    if (trimmed) {
-      localStorage.setItem(STORAGE_SCRIPT_URL_KEY, trimmed);
-    } else {
-      localStorage.removeItem(STORAGE_SCRIPT_URL_KEY);
-    }
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 export function applyThemeAndIosMeta(data: HubData): void {
   const palette = resolveActivePalette(data.theme as ThemeId, data.customTheme);
@@ -105,11 +83,8 @@ export function applyThemeAndIosMeta(data: HubData): void {
   }
 }
 
-export async function fetchFromGoogleSheets(scriptUrl: string): Promise<HubData | null> {
-  const url = scriptUrl.trim();
-  if (!url) return null;
-
-  const requestUrl = buildCacheBustedScriptUrl(url, Date.now());
+export async function fetchFromGoogleSheets(): Promise<HubData | null> {
+  const requestUrl = buildCacheBustedScriptUrl(GOOGLE_SCRIPT_URL, Date.now());
   const response = await fetch(requestUrl, {
     method: 'GET',
     cache: 'no-store',
@@ -126,18 +101,39 @@ export async function fetchFromGoogleSheets(scriptUrl: string): Promise<HubData 
   return sanitizeAndParseHubData(payload);
 }
 
-export async function saveToGoogleSheets(scriptUrl: string, data: HubData): Promise<void> {
-  const url = scriptUrl.trim();
-  if (!url) return;
+export async function saveToGoogleSheets(data: HubData): Promise<HubData | null> {
+  const body = JSON.stringify({ data });
+  const canKeepAlive =
+    typeof Blob === 'undefined' ? body.length < 60000 : new Blob([body]).size < 60000;
 
   // Use text/plain to avoid CORS preflight OPTIONS errors on Google Apps Script Web Apps
-  const response = await fetch(url, {
+  // Set keepalive: true so background sync completes even if the user closes the tab immediately
+  const requestInit: RequestInit = {
     method: 'POST',
     headers: {
       'Content-Type': 'text/plain;charset=utf-8',
     },
-    body: JSON.stringify({ data }),
-  });
+    body,
+    ...(canKeepAlive ? { keepalive: true } : {}),
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(GOOGLE_SCRIPT_URL, requestInit);
+  } catch (err) {
+    if (canKeepAlive) {
+      // Fallback without keepalive if browser rejects keepalive quota
+      response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body,
+      });
+    } else {
+      throw err;
+    }
+  }
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -148,10 +144,12 @@ export async function saveToGoogleSheets(scriptUrl: string, data: HubData): Prom
     if (json && json.ok === false) {
       throw new Error(json.error || 'Google Apps Script error');
     }
+    return extractUpdatedDataFromPostResponse(json);
   } catch (err) {
     if (err instanceof Error && err.message.includes('Google Apps Script')) {
       throw err;
     }
     // Some GAS redirects return opaque or non-JSON text; if HTTP was 2xx, treat as saved.
+    return null;
   }
 }

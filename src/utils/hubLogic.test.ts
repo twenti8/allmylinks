@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_SCRIPT_URL,
+  GOOGLE_SCRIPT_URL,
   PROFILE_LOGO_MAX_CHARS,
   PROFILE_LOGO_MAX_PX,
   PROFILE_LOGO_QUALITY,
@@ -15,6 +15,7 @@ import {
   createDefaultHubData,
   extractHostname,
   extractUniqueCategories,
+  extractUpdatedDataFromPostResponse,
   extractYouTubeId,
   filterLinksByCategory,
   formatLinkDecoration,
@@ -22,12 +23,10 @@ import {
   formatProfileFrame,
   getFaviconUrl,
   isNonEmptyCloudPayload,
-  isValidScriptUrl,
   normalizeUrl,
   parseLinkDecoration,
   parseProfileFrame,
   reorderLinks,
-  resolveScriptUrl,
   sanitizeAndParseHubData,
   validatePasscode,
 } from './hubLogic';
@@ -137,12 +136,12 @@ test('buildGoogleAppsScriptCode includes doGet and doPost handlers with chunking
   assert.ok(code.includes('CHUNK_SIZE'));
 });
 
-test('buildStandaloneHtml embeds profile name and serialized links cleanly', () => {
+test('buildStandaloneHtml embeds profile name, hardcoded GOOGLE_SCRIPT_URL, and serialized links cleanly', () => {
   const data = createDefaultHubData();
-  const html = buildStandaloneHtml(data, 'https://script.google.com/macros/s/test/exec');
+  const html = buildStandaloneHtml(data);
   assert.ok(html.includes('<!doctype html>'));
   assert.ok(html.includes('moogrob'));
-  assert.ok(html.includes('https://script.google.com/macros/s/test/exec'));
+  assert.ok(html.includes(GOOGLE_SCRIPT_URL));
 });
 
 test('buildWebAppManifest reflects profile icon, app name, and caramel theme colors', () => {
@@ -203,32 +202,16 @@ test('formatPlaybackTime, computeProgressPercent, and computeSeekTimeFromPercent
   assert.equal(computeSeekTimeFromPercent(50, 0), 0);
 });
 
-test('DEFAULT_SCRIPT_URL, resolveScriptUrl, and buildCacheBustedScriptUrl handle cross-device auto-sync', () => {
-  assert.equal(typeof DEFAULT_SCRIPT_URL, 'string');
-  assert.equal(isValidScriptUrl(DEFAULT_SCRIPT_URL), false);
-  assert.equal(isValidScriptUrl(''), false);
-  assert.equal(isValidScriptUrl('https://script.google.com/macros/s/abc123/exec'), true);
-
-  // New device with empty localStorage uses valid defaultUrl automatically
+test('GOOGLE_SCRIPT_URL and buildCacheBustedScriptUrl enforce hardcoded cross-device auto-sync', () => {
   assert.equal(
-    resolveScriptUrl('', 'https://script.google.com/macros/s/default-id/exec'),
-    'https://script.google.com/macros/s/default-id/exec'
+    GOOGLE_SCRIPT_URL,
+    'https://script.google.com/macros/s/AKfycbzGGsKII9wIZExoBB038USbMOC2O3Im6FkgK6szNsFiO70gViDiNKnR-GS6gIk1akMq/exec'
   );
-  // Explicit localStorage override wins over defaultUrl
-  assert.equal(
-    resolveScriptUrl(
-      'https://script.google.com/macros/s/local-id/exec',
-      'https://script.google.com/macros/s/default-id/exec'
-    ),
-    'https://script.google.com/macros/s/local-id/exec'
-  );
-  // Placeholder defaultUrl stays safe (no broken fetch)
-  assert.equal(resolveScriptUrl('', DEFAULT_SCRIPT_URL), '');
 
-  // Cache-busting ?t= query string
+  // Cache-busting ?t= query string defaults to GOOGLE_SCRIPT_URL
   assert.equal(
-    buildCacheBustedScriptUrl('https://script.google.com/macros/s/abc/exec', 1700000000000),
-    'https://script.google.com/macros/s/abc/exec?t=1700000000000'
+    buildCacheBustedScriptUrl(undefined, 1700000000000),
+    `${GOOGLE_SCRIPT_URL}?t=1700000000000`
   );
   assert.equal(
     buildCacheBustedScriptUrl('https://script.google.com/macros/s/abc/exec?v=1', 1700000000000),
@@ -238,7 +221,7 @@ test('DEFAULT_SCRIPT_URL, resolveScriptUrl, and buildCacheBustedScriptUrl handle
 
 test('buildStandaloneHtml embeds ?t= cache buster and visibilitychange/focus auto-sync listeners', () => {
   const data = createDefaultHubData();
-  const html = buildStandaloneHtml(data, 'https://script.google.com/macros/s/test/exec');
+  const html = buildStandaloneHtml(data);
   assert.ok(html.includes("'t=' + Date.now()"));
   assert.ok(html.includes('visibilitychange'));
   assert.ok(html.includes("'focus'"));
@@ -278,4 +261,32 @@ test('calculateContainedDimensions caps profile logos to 180x180 and profileImag
   const hydrated = sanitizeAndParseHubData(postedPayload.data);
   assert.ok(hydrated);
   assert.equal(hydrated.profileImage, postedPayload.data.profileImage);
+});
+
+test('extractUpdatedDataFromPostResponse extracts Google Drive updatedData cleanly and ignores empty responses', () => {
+  assert.equal(extractUpdatedDataFromPostResponse({ ok: true }), null);
+  assert.equal(extractUpdatedDataFromPostResponse({ ok: true, updatedData: {} }), null);
+  assert.equal(extractUpdatedDataFromPostResponse(null), null);
+
+  const driveUrl = 'https://lh3.googleusercontent.com/d/1AbCdEfGhIjK';
+  const linkDriveUrl = 'https://lh3.googleusercontent.com/d/9ZyXwVuTsRqP';
+  const parsed = extractUpdatedDataFromPostResponse({
+    ok: true,
+    updatedData: {
+      profileName: 'Drive Synced Hub',
+      profileImage: driveUrl,
+      links: [
+        {
+          id: 'l-1',
+          title: 'Shop',
+          url: 'https://shop.test',
+          category: 'store',
+          icon: linkDriveUrl,
+        },
+      ],
+    },
+  });
+  assert.ok(parsed);
+  assert.equal(parsed.profileImage, driveUrl);
+  assert.equal(parsed.links[0].icon, linkDriveUrl);
 });

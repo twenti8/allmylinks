@@ -12,6 +12,9 @@ import {
 } from 'lucide-react';
 import type { LinkItem, ThemePalette } from '../types/hub';
 import {
+  PROFILE_LOGO_MAX_CHARS,
+  PROFILE_LOGO_MAX_PX,
+  PROFILE_LOGO_QUALITY,
   extractHostname,
   formatLinkDecoration,
   getFaviconUrl,
@@ -125,7 +128,13 @@ export const LinkModal: React.FC<LinkModalProps> = ({
     setResizing(true);
     setError('');
     try {
-      const dataUrl = await resizeImageToDataUrl(file, 300);
+      const dataUrl = await resizeImageToDataUrl(
+        file,
+        PROFILE_LOGO_MAX_PX,
+        'webp',
+        PROFILE_LOGO_QUALITY,
+        PROFILE_LOGO_MAX_CHARS
+      );
       setIcon(dataUrl);
       setIconMode('upload');
     } catch {

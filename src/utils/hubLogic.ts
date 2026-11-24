@@ -6,9 +6,9 @@ import {
 } from './themes';
 
 export const DEFAULT_PASSCODE = '1234';
-export const DEFAULT_SCRIPT_URL = 'ใส่ลิงก์_WEB_APP_URL_ของคุณตรงนี้';
+export const GOOGLE_SCRIPT_URL =
+  'https://script.google.com/macros/s/AKfycbzGGsKII9wIZExoBB038USbMOC2O3Im6FkgK6szNsFiO70gViDiNKnR-GS6gIk1akMq/exec';
 export const STORAGE_DATA_KEY = 'pastel_link_hub_data_v1';
-export const STORAGE_SCRIPT_URL_KEY = 'pastel_link_hub_script_url_v1';
 export const PROFILE_LOGO_MAX_PX = 180;
 export const PROFILE_LOGO_QUALITY = 0.75;
 export const PROFILE_LOGO_MAX_CHARS = 30000;
@@ -30,32 +30,8 @@ export function calculateContainedDimensions(
   return { width: Math.max(1, Math.round((w * cap) / h)), height: cap };
 }
 
-export function isValidScriptUrl(url: string | null | undefined): boolean {
-  const trimmed = (url || '').trim();
-  if (!trimmed || trimmed === DEFAULT_SCRIPT_URL) return false;
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
-  } catch {
-    return false;
-  }
-}
-
-export function resolveScriptUrl(
-  localUrl: string | null | undefined,
-  defaultUrl: string = DEFAULT_SCRIPT_URL
-): string {
-  if (isValidScriptUrl(localUrl)) {
-    return (localUrl || '').trim();
-  }
-  if (isValidScriptUrl(defaultUrl)) {
-    return defaultUrl.trim();
-  }
-  return '';
-}
-
 export function buildCacheBustedScriptUrl(
-  scriptUrl: string,
+  scriptUrl: string = GOOGLE_SCRIPT_URL,
   timestamp: number = Date.now()
 ): string {
   const trimmed = (scriptUrl || '').trim();
@@ -520,6 +496,14 @@ export function sanitizeAndParseHubData(raw: unknown): HubData | null {
   };
 }
 
+export function extractUpdatedDataFromPostResponse(json: unknown): HubData | null {
+  if (!json || typeof json !== 'object') return null;
+  const record = json as Record<string, unknown>;
+  if (!('updatedData' in record)) return null;
+  if (!isNonEmptyCloudPayload(record.updatedData)) return null;
+  return sanitizeAndParseHubData(record.updatedData);
+}
+
 export function buildGoogleAppsScriptCode(): string {
   return `// Pastel Link Hub — Google Apps Script Cloud Database
 // รองรับการเก็บข้อมูลขนาดใหญ่โดยแบ่งเก็บเป็น Chunk ละ 40,000 ตัวอักษรในชีต "HubData"
@@ -596,11 +580,10 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export function buildStandaloneHtml(data: HubData, scriptUrl = ''): string {
+export function buildStandaloneHtml(data: HubData): string {
   const theme = resolveActivePalette(data.theme, data.customTheme);
   const serialized = JSON.stringify(data).replace(/</g, '\\u003c');
-  const resolvedUrl = resolveScriptUrl(scriptUrl, DEFAULT_SCRIPT_URL);
-  const safeScriptUrl = JSON.stringify(resolvedUrl).replace(/</g, '\\u003c');
+  const safeScriptUrl = JSON.stringify(GOOGLE_SCRIPT_URL).replace(/</g, '\\u003c');
   const title = escapeHtml(data.iosConfig.appName || data.profileName);
   const bio = escapeHtml(data.profileBio || '');
   const ytId = data.music.enabled ? extractYouTubeId(data.music.youtubeUrl) : null;

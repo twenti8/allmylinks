@@ -7,9 +7,8 @@ import {
 
 /**
  * Resizes and compresses an uploaded image using HTMLCanvasElement so dimensions never exceed
- * `maxDimension` (default 180x180px for profile logos) and encodes as WebP/JPEG at `quality`
- * (default 0.75), stepping down quality if needed to stay under `maxChars` (default 30,000 chars)
- * for Google Sheets cell limits.
+ * `maxDimension` (default 150x150px for profile logos) and encodes as `image/jpeg` at
+ * `quality` (default 0.7), keeping payloads ultra-compact for localStorage and Google Sheets.
  */
 export function resizeImageToDataUrl(
   file: File,
@@ -57,27 +56,44 @@ export function resizeImageToDataUrl(
           return canvas.toDataURL(mime, q);
         };
 
+        if (format === 'jpeg') {
+          const primary = encode('image/jpeg', quality);
+          if (primary.length < maxChars) {
+            resolve(primary);
+            return;
+          }
+          let best = primary;
+          for (const q of [0.6, 0.5, 0.4, 0.3]) {
+            if (q < quality) {
+              best = encode('image/jpeg', q);
+              if (best.length < maxChars) {
+                resolve(best);
+                return;
+              }
+            }
+          }
+          resolve(best);
+          return;
+        }
+
         const qualitySteps = Array.from(
           new Set([quality, 0.65, 0.55, 0.45, 0.35].filter((q) => q <= quality))
         );
 
         let bestUrl = '';
-        if (format === 'webp') {
-          for (const q of qualitySteps) {
-            const candidate = encode('image/webp', q);
-            if (!candidate.startsWith('data:image/webp')) {
-              bestUrl = '';
-              break;
-            }
-            bestUrl = candidate;
-            if (candidate.length < maxChars) {
-              resolve(candidate);
-              return;
-            }
+        for (const q of qualitySteps) {
+          const candidate = encode('image/webp', q);
+          if (!candidate.startsWith('data:image/webp')) {
+            bestUrl = '';
+            break;
+          }
+          bestUrl = candidate;
+          if (candidate.length < maxChars) {
+            resolve(candidate);
+            return;
           }
         }
 
-        // Fallback to JPEG (or if WebP is unsupported / still exceeds maxChars)
         for (const q of qualitySteps) {
           const candidate = encode('image/jpeg', q);
           bestUrl = candidate;

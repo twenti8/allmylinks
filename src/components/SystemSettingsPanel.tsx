@@ -1,13 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  Cloud,
-  CloudDownload,
+  AlertCircle,
+  CheckCircle2,
   Download,
-  FileCode2,
   FileJson,
   KeyRound,
+  RefreshCw,
   RotateCcw,
-  Save,
   Upload,
 } from 'lucide-react';
 import type { HubData, SyncStatus, ThemePalette } from '../types/hub';
@@ -15,18 +14,13 @@ import type { HubData, SyncStatus, ThemePalette } from '../types/hub';
 export interface PersistResult {
   ok: boolean;
   cloudSynced: boolean;
-  hasScriptUrl: boolean;
 }
 
 interface SystemSettingsPanelProps {
   data: HubData;
-  scriptUrl: string;
   syncStatus: SyncStatus;
   palette: ThemePalette;
-  onSaveScriptUrl: (url: string) => void;
-  onPullFromCloud: () => void;
-  onOpenAppsScriptGuide: () => void;
-  onChangePasscode: (newPasscode: string, draftUrl?: string) => Promise<PersistResult>;
+  onChangePasscode: (newPasscode: string) => Promise<PersistResult>;
   onExportJson: () => void;
   onImportJson: (file: File) => void;
   onDownloadHtml: () => void;
@@ -34,33 +28,18 @@ interface SystemSettingsPanelProps {
 }
 
 export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
-  scriptUrl,
   syncStatus,
   palette,
-  onSaveScriptUrl,
-  onPullFromCloud,
-  onOpenAppsScriptGuide,
   onChangePasscode,
   onExportJson,
   onImportJson,
   onDownloadHtml,
   onRequestReset,
 }) => {
-  const [urlDraft, setUrlDraft] = useState(scriptUrl);
   const [newPass, setNewPass] = useState('');
   const [passMessage, setPassMessage] = useState('');
   const [passError, setPassError] = useState(false);
-  const [savingPass, setSavingPass] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setUrlDraft(scriptUrl);
-  }, [scriptUrl]);
-
-  const handleScriptSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSaveScriptUrl(urlDraft);
-  };
 
   const handlePassSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,27 +50,20 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
       return;
     }
 
-    setSavingPass(true);
+    // Optimistic UI: clear input and confirm local save immediately without blocking
+    setNewPass('');
     setPassError(false);
-    setPassMessage('กำลังบันทึกและซิงก์รหัสผ่านใหม่...');
+    setPassMessage('บันทึกรหัสใหม่แล้ว กำลังซิงก์ขึ้น Google Sheets...');
 
-    try {
-      const result = await onChangePasscode(cleaned, urlDraft.trim());
-      setNewPass('');
-      if (result.cloudSynced) {
-        setPassError(false);
-        setPassMessage('เปลี่ยนรหัส Passcode และซิงก์ขึ้น Google Sheets เรียบร้อยแล้ว');
-      } else if (result.hasScriptUrl && !result.ok) {
-        setPassError(true);
-        setPassMessage('บันทึกรหัสใหม่ลงในเครื่องแล้ว แต่ไม่สามารถซิงก์ขึ้น Google Sheets ได้');
-      } else {
-        setPassError(false);
-        setPassMessage('บันทึกรหัส Passcode ใหม่ลงในเครื่องเรียบร้อยแล้ว');
-      }
-    } finally {
-      setSavingPass(false);
-      setTimeout(() => setPassMessage(''), 4500);
+    const result = await onChangePasscode(cleaned);
+    if (result.cloudSynced) {
+      setPassError(false);
+      setPassMessage('เปลี่ยนรหัส Passcode และซิงก์ขึ้น Google Sheets เรียบร้อยแล้ว');
+    } else {
+      setPassError(true);
+      setPassMessage('บันทึกรหัสใหม่ลงในเครื่องแล้ว แต่ไม่สามารถซิงก์ขึ้น Google Sheets ได้');
     }
+    setTimeout(() => setPassMessage(''), 4500);
   };
 
   return (
@@ -105,7 +77,10 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
         color: palette.text,
       }}
     >
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+      <div
+        className="mb-5 flex flex-wrap items-center justify-between gap-2 border-b pb-4"
+        style={{ borderColor: palette.cardBorder }}
+      >
         <div>
           <h2 className="text-base font-bold sm:text-lg">ตั้งค่าระบบและสำรองข้อมูล</h2>
           <p className="text-xs" style={{ color: palette.textMuted }}>
@@ -116,7 +91,7 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
         {/* Sync Status Label */}
         {syncStatus.message && (
           <span
-            className="text-xs font-semibold"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold"
             style={{
               color:
                 syncStatus.state === 'error'
@@ -126,71 +101,20 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
                     : palette.textMuted,
             }}
           >
+            {syncStatus.state === 'syncing' ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            ) : syncStatus.state === 'synced' ? (
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : syncStatus.state === 'error' ? (
+              <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : null}
             {syncStatus.message}
           </span>
         )}
       </div>
 
-      {/* Google Sheets Sync Section */}
-      <div className="space-y-4 border-b pb-6" style={{ borderColor: palette.cardBorder }}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm font-bold">
-            <Cloud className="h-4 w-4" style={{ color: palette.accent }} aria-hidden="true" />
-            <span>เชื่อมต่อฐานข้อมูล Google Sheets</span>
-          </div>
-          <button
-            type="button"
-            onClick={onOpenAppsScriptGuide}
-            className="flex min-h-[38px] items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-85"
-            style={{ backgroundColor: palette.accentSoft, color: palette.accent }}
-          >
-            <FileCode2 className="h-3.5 w-3.5" aria-hidden="true" />
-            คู่มือและคัดลอกโค้ด Apps Script
-          </button>
-        </div>
-
-        <form onSubmit={handleScriptSubmit} className="flex flex-col gap-2.5 sm:flex-row">
-          <label htmlFor="google-script-url-input" className="sr-only">
-            GOOGLE_SCRIPT_URL
-          </label>
-          <input
-            id="google-script-url-input"
-            type="url"
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            placeholder="วางลิงก์ https://script.google.com/macros/s/.../exec"
-            className="min-h-[44px] flex-1 rounded-full px-4 text-xs outline-none focus:ring-2 sm:text-sm"
-            style={{
-              backgroundColor: palette.bg,
-              border: `1px solid ${palette.cardBorder}`,
-              color: palette.text,
-            }}
-          />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-transform active:scale-95 sm:flex-initial"
-              style={{ backgroundColor: palette.accent, color: palette.accentText }}
-            >
-              <Save className="h-3.5 w-3.5" aria-hidden="true" />
-              บันทึก URL
-            </button>
-            <button
-              type="button"
-              onClick={onPullFromCloud}
-              disabled={!urlDraft.trim() || syncStatus.state === 'syncing'}
-              className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-opacity disabled:opacity-40 sm:flex-initial"
-              style={{ backgroundColor: palette.bgSoft, color: palette.text }}
-            >
-              <CloudDownload className="h-3.5 w-3.5" aria-hidden="true" />
-              ดึงข้อมูลจาก Cloud
-            </button>
-          </div>
-        </form>
-      </div>
-
       {/* Passcode Change + Backup / Export Tools Grid */}
-      <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* Change Passcode */}
         <form onSubmit={handlePassSubmit} className="min-w-0 space-y-3">
           <div className="flex items-center gap-2 text-sm font-bold">
@@ -207,7 +131,6 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
               value={newPass}
               onChange={(e) => setNewPass(e.target.value)}
               placeholder="รหัสใหม่ (4 ตัวขึ้นไป)"
-              disabled={savingPass}
               className="min-h-[44px] w-full min-w-0 flex-1 rounded-full px-4 text-xs outline-none sm:text-sm"
               style={{
                 backgroundColor: palette.bg,
@@ -217,11 +140,10 @@ export const SystemSettingsPanel: React.FC<SystemSettingsPanelProps> = ({
             />
             <button
               type="submit"
-              disabled={savingPass}
-              className="min-h-[44px] shrink-0 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-transform active:scale-95 disabled:opacity-60"
+              className="min-h-[44px] shrink-0 whitespace-nowrap rounded-full px-4 text-xs font-semibold transition-transform active:scale-95"
               style={{ backgroundColor: palette.accent, color: palette.accentText }}
             >
-              {savingPass ? 'กำลังบันทึก...' : 'เปลี่ยนรหัส'}
+              เปลี่ยนรหัส
             </button>
           </div>
           {passMessage && (

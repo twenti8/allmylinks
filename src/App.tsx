@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   CheckCircle2,
   CloudUpload,
   ImagePlus,
@@ -9,7 +10,6 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
-import { AppsScriptModal } from './components/AppsScriptModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { LinkCard } from './components/LinkCard';
 import { LinkModal } from './components/LinkModal';
@@ -43,9 +43,7 @@ import {
   applyThemeAndIosMeta,
   fetchFromGoogleSheets,
   loadLocalHubData,
-  loadScriptUrl,
   saveLocalHubData,
-  saveScriptUrl,
   saveToGoogleSheets,
 } from './utils/storage';
 import { resolveActivePalette } from './utils/themes';
@@ -54,7 +52,6 @@ export default function App() {
   // Synchronous initial load from localStorage for Zero-Flash rendering
   const [data, setData] = useState<HubData>(() => loadLocalHubData());
   const latestDataRef = useRef<HubData>(data);
-  const [scriptUrl, setScriptUrl] = useState<string>(() => loadScriptUrl());
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
@@ -69,7 +66,6 @@ export default function App() {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
-  const [gasGuideOpen, setGasGuideOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<LinkItem | null>(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
@@ -96,32 +92,29 @@ export default function App() {
 
   const isPullingRef = useRef(false);
   const isSavingRef = useRef(false);
+  const saveSeqRef = useRef(0);
   const lastPullAtRef = useRef(0);
-  const scriptUrlRef = useRef(scriptUrl);
-  scriptUrlRef.current = scriptUrl;
 
   const hasOpenModalRef = useRef(false);
   hasOpenModalRef.current = Boolean(
     passcodeModalOpen ||
       profileModalOpen ||
       linkModalOpen ||
-      gasGuideOpen ||
       deleteTarget ||
       resetConfirmOpen
   );
 
-  // Background Cloud Sync on initial load & tab resume if GOOGLE_SCRIPT_URL / DEFAULT_SCRIPT_URL is configured
+  // Hardcoded Cloud Sync on initial load & tab resume using GOOGLE_SCRIPT_URL directly
   const pullCloudData = useCallback(
-    async (urlToUse: string, silent = true) => {
-      const cleanUrl = urlToUse.trim();
-      if (!cleanUrl || isPullingRef.current || isSavingRef.current) return;
+    async (silent = true) => {
+      if (isPullingRef.current || isSavingRef.current) return;
 
       isPullingRef.current = true;
       lastPullAtRef.current = Date.now();
       setSyncStatus({ state: 'syncing', message: 'กำลังซิงก์ข้อมูลจาก Google Sheets...' });
 
       try {
-        const cloudData = await fetchFromGoogleSheets(cleanUrl);
+        const cloudData = await fetchFromGoogleSheets();
         if (cloudData) {
           // Google Sheets is the source of truth: overwrite both React state and localStorage immediately
           commitLocalData(cloudData);
@@ -140,7 +133,7 @@ export default function App() {
           state: 'error',
           message: 'เชื่อมต่อ Google Sheets ไม่สำเร็จ (ใช้ข้อมูลในเครื่อง)',
         });
-        if (!silent) showNotice('ดึงข้อมูลจาก Cloud ไม่สำเร็จ กรุณาตรวจสอบ URL');
+        if (!silent) showNotice('ดึงข้อมูลจาก Cloud ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       } finally {
         isPullingRef.current = false;
       }
@@ -149,20 +142,14 @@ export default function App() {
   );
 
   useEffect(() => {
-    const initialUrl = (scriptUrlRef.current || loadScriptUrl()).trim();
-    if (initialUrl) {
-      pullCloudData(initialUrl, true);
-    }
+    pullCloudData(true);
 
     const handleResumeSync = () => {
       if (document.visibilityState === 'hidden') return;
       if (hasOpenModalRef.current || isSavingRef.current || isPullingRef.current) return;
       if (Date.now() - lastPullAtRef.current < 500) return;
 
-      const activeUrl = (scriptUrlRef.current || loadScriptUrl()).trim();
-      if (activeUrl) {
-        pullCloudData(activeUrl, true);
-      }
+      pullCloudData(true);
     };
 
     document.addEventListener('visibilitychange', handleResumeSync);
@@ -173,51 +160,47 @@ export default function App() {
     };
   }, [pullCloudData]);
 
-  // Persist to localStorage & optionally push to Google Sheets directly with the passed object
+  // Optimistic UI: update UI + localStorage immediately (0ms), then sync to Google Sheets in background
   const persistChanges = useCallback(
-    async (
-      nextData: HubData,
-      pushCloud: boolean,
-      overrideScriptUrl?: string
-    ): Promise<PersistResult> => {
+    async (nextData: HubData, pushCloud: boolean): Promise<PersistResult> => {
+      const saveSeq = ++saveSeqRef.current;
       const stamped: HubData = {
         ...nextData,
         updatedAt: new Date().toISOString(),
       };
       commitLocalData(stamped);
 
-      const activeUrl = (overrideScriptUrl ?? (scriptUrl || loadScriptUrl())).trim();
-
-      if (pushCloud && activeUrl) {
+      if (pushCloud) {
         isSavingRef.current = true;
-        setSyncStatus({ state: 'syncing', message: 'กำลังบันทึกขึ้น Google Sheets...' });
+        setSyncStatus({ state: 'syncing', message: 'กำลังซิงก์...' });
         try {
-          await saveToGoogleSheets(activeUrl, stamped);
+          const updatedFromCloud = await saveToGoogleSheets(stamped);
           lastPullAtRef.current = Date.now();
+          if (updatedFromCloud && saveSeq === saveSeqRef.current) {
+            commitLocalData(updatedFromCloud);
+          }
           setSyncStatus({
             state: 'synced',
-            message: 'บันทึกลง Cloud แล้ว',
+            message: 'ซิงก์สำเร็จ',
             lastSyncedAt: new Date().toISOString(),
           });
           showNotice('บันทึกและซิงก์ข้อมูลขึ้น Google Sheets สำเร็จ');
-          return { ok: true, cloudSynced: true, hasScriptUrl: true };
+          return { ok: true, cloudSynced: true };
         } catch {
           setSyncStatus({
             state: 'error',
-            message: 'บันทึกในเครื่องแล้ว (ซิงก์ Cloud ไม่สำเร็จ)',
+            message: 'ซิงก์ Cloud ไม่สำเร็จ',
           });
           showNotice('บันทึกในเครื่องแล้ว แต่ไม่สามารถส่งไป Google Sheets ได้');
-          return { ok: false, cloudSynced: false, hasScriptUrl: true };
+          return { ok: false, cloudSynced: false };
         } finally {
           isSavingRef.current = false;
         }
-      } else if (pushCloud) {
-        showNotice('บันทึกข้อมูลลงในเครื่องเรียบร้อยแล้ว');
       }
 
-      return { ok: true, cloudSynced: false, hasScriptUrl: Boolean(activeUrl) };
+      return { ok: true, cloudSynced: false };
     },
-    [commitLocalData, scriptUrl, showNotice]
+    [commitLocalData, showNotice]
   );
 
   // Auto-grouped unique categories extracted from all links (trimmed & deduplicated)
@@ -256,17 +239,8 @@ export default function App() {
     });
   };
 
-  const handleChangePasscode = async (
-    newPasscode: string,
-    draftUrl?: string
-  ): Promise<PersistResult> => {
+  const handleChangePasscode = async (newPasscode: string): Promise<PersistResult> => {
     const cleanPasscode = newPasscode.trim();
-    const resolvedUrl = (draftUrl || scriptUrl || loadScriptUrl()).trim();
-
-    if (draftUrl && draftUrl.trim() && draftUrl.trim() !== scriptUrl.trim()) {
-      setScriptUrl(resolvedUrl);
-      saveScriptUrl(resolvedUrl);
-    }
 
     // Build payload directly with `passcode: cleanPasscode` without reading stale React state
     const payloadWithNewPasscode: HubData = {
@@ -274,7 +248,7 @@ export default function App() {
       passcode: cleanPasscode,
     };
 
-    return persistChanges(payloadWithNewPasscode, true, resolvedUrl);
+    return persistChanges(payloadWithNewPasscode, true);
   };
 
   const handleSaveLink = (payload: Omit<LinkItem, 'id'> & { id?: string }) => {
@@ -360,19 +334,6 @@ export default function App() {
     persistChanges(updated, true);
   };
 
-  const handleSaveScriptUrl = (url: string) => {
-    const trimmed = url.trim();
-    saveScriptUrl(trimmed);
-    const effective = loadScriptUrl();
-    setScriptUrl(effective);
-    if (effective) {
-      showNotice(trimmed ? 'บันทึก GOOGLE_SCRIPT_URL แล้ว' : 'ใช้ค่าเริ่มต้น DEFAULT_SCRIPT_URL แล้ว');
-      pullCloudData(effective, true);
-    } else {
-      setSyncStatus({ state: 'idle', message: '' });
-      showNotice('ล้างการเชื่อมต่อ Google Sheets แล้ว');
-    }
-  };
 
   const handleExportJson = () => {
     const current = latestDataRef.current;
@@ -402,7 +363,7 @@ export default function App() {
   };
 
   const handleDownloadHtml = () => {
-    const html = buildStandaloneHtml(latestDataRef.current, scriptUrl);
+    const html = buildStandaloneHtml(latestDataRef.current);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -442,20 +403,15 @@ export default function App() {
           appIcon: resized,
         },
       };
-      await persistChanges(updated, true);
-      showNotice('อัปเดตรูปโลโก้และไอคอน iOS เรียบร้อย');
+      void persistChanges(updated, true);
+      showNotice('อัปเดตรูปโลโก้แล้ว');
     } catch {
       showNotice('ไม่สามารถอัปโหลดรูปโลโก้ได้');
     }
   };
 
   const handleSyncNow = () => {
-    const activeUrl = (scriptUrlRef.current || loadScriptUrl()).trim();
-    if (!activeUrl) {
-      showNotice('ยังไม่ได้เชื่อมต่อ Google Sheets (ตั้งค่า URL ในโหมดแก้ไข)');
-      return;
-    }
-    pullCloudData(activeUrl, false);
+    pullCloudData(false);
   };
 
   return (
@@ -463,8 +419,37 @@ export default function App() {
       className="min-h-screen w-full transition-colors duration-200"
       style={{ backgroundColor: palette.bg, color: palette.text }}
     >
-      {/* Top-Right Unlock / Admin Controls */}
-      <header className="mx-auto flex w-full max-w-4xl items-center justify-end gap-2 px-4 pt-4 sm:px-6 sm:pt-5">
+      {/* Top-Right Unlock / Admin Controls + Subtle Sync Status Indicator */}
+      <header className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 px-4 pt-4 sm:px-6 sm:pt-5">
+        <div className="min-w-0">
+          {isAdmin && syncStatus.message && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="inline-flex min-h-[34px] items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shadow-sm"
+              style={{
+                backgroundColor: palette.cardBg,
+                border: `1px solid ${palette.cardBorder}`,
+                color:
+                  syncStatus.state === 'error'
+                    ? '#DC2626'
+                    : syncStatus.state === 'synced'
+                      ? palette.accent
+                      : palette.textMuted,
+              }}
+            >
+              {syncStatus.state === 'syncing' ? (
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+              ) : syncStatus.state === 'error' ? (
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              )}
+              <span className="truncate">{syncStatus.message}</span>
+            </div>
+          )}
+        </div>
+
         {!isAdmin ? (
           <button
             type="button"
@@ -485,8 +470,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => persistChanges(latestDataRef.current, true)}
-              disabled={syncStatus.state === 'syncing'}
-              className="flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold transition-opacity hover:opacity-85 disabled:opacity-60 sm:text-sm"
+              className="flex min-h-[44px] items-center gap-1.5 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold transition-opacity hover:opacity-85 sm:text-sm"
               style={{
                 backgroundColor: palette.cardBg,
                 border: `1px solid ${palette.cardBorder}`,
@@ -494,11 +478,11 @@ export default function App() {
               }}
             >
               {syncStatus.state === 'syncing' ? (
-                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <RefreshCw className="h-4 w-4 animate-spin" style={{ color: palette.accent }} aria-hidden="true" />
               ) : (
                 <CloudUpload className="h-4 w-4" style={{ color: palette.accent }} aria-hidden="true" />
               )}
-              <span>{scriptUrl ? 'บันทึก & ซิงก์ Cloud' : 'บันทึกข้อมูล'}</span>
+              <span>บันทึก & ซิงก์ Cloud</span>
             </button>
 
             <button
@@ -765,12 +749,8 @@ export default function App() {
         {isAdmin && (
           <SystemSettingsPanel
             data={data}
-            scriptUrl={scriptUrl}
             syncStatus={syncStatus}
             palette={palette}
-            onSaveScriptUrl={handleSaveScriptUrl}
-            onPullFromCloud={() => pullCloudData(scriptUrl, false)}
-            onOpenAppsScriptGuide={() => setGasGuideOpen(true)}
             onChangePasscode={handleChangePasscode}
             onExportJson={handleExportJson}
             onImportJson={handleImportJson}
@@ -816,12 +796,6 @@ export default function App() {
           }}
         />
       )}
-
-      <AppsScriptModal
-        open={gasGuideOpen}
-        palette={palette}
-        onClose={() => setGasGuideOpen(false)}
-      />
 
       <ConfirmModal
         open={Boolean(deleteTarget)}

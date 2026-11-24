@@ -144,68 +144,81 @@ export const ProfileEditorModal: React.FC<ProfileEditorModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Logo Circle + Upload / Reset / URL */}
-          <div className="flex items-center gap-3.5">
-            <div
-              className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-white p-0.5 shadow-sm"
-              style={{ border: `2.5px solid ${palette.accent}` }}
-            >
-              <img
-                src={profileImage || DEFAULT_AVATAR_SVG}
-                alt="ตัวอย่างรูปโลโก้"
-                className="h-full w-full rounded-full object-cover"
-              />
-            </div>
-
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <label
-                  className="inline-flex min-h-[38px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-85"
-                  style={{ backgroundColor: palette.accentSoft, color: palette.accent }}
-                >
-                  <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span>{uploading ? 'กำลังย่อขนาด...' : 'อัปโหลดโลโก้'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleUploadProfileImg}
-                    className="sr-only"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={handleResetLogo}
-                  className="inline-flex min-h-[38px] items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-85"
-                  style={{
-                    backgroundColor: palette.bg,
-                    border: `1px solid ${palette.cardBorder}`,
-                    color: palette.text,
-                  }}
-                >
-                  <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span>ใช้รูปเริ่มต้น</span>
-                </button>
-              </div>
-
-              <div>
-                <label htmlFor="profile-logo-url-input" className="sr-only">
-                  URL รูปโลโก้
-                </label>
-                <input
-                  id="profile-logo-url-input"
-                  type="text"
-                  value={isDataUri ? '' : profileImage}
-                  onChange={(e) => setProfileImage(e.target.value)}
-                  placeholder="ใช้รูปที่อัปโหลดแล้ว (วาง URL ใหม่เพื่อเปลี่ยน)"
-                  className="w-full rounded-full px-3.5 py-2 text-xs outline-none focus:ring-2"
-                  style={{
-                    backgroundColor: '#FFFFFF',
-                    border: `1px solid ${palette.cardBorder}`,
-                    color: palette.text,
-                  }}
+          {/* Logo Circle + Upload / Reset + Explicit Image URL Input */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3.5">
+              <div
+                className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-white p-0.5 shadow-sm"
+                style={{ border: `2.5px solid ${palette.accent}` }}
+              >
+                <img
+                  src={profileImage || DEFAULT_AVATAR_SVG}
+                  alt="ตัวอย่างรูปโลโก้"
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full rounded-full object-cover"
                 />
               </div>
+
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label
+                    className="inline-flex min-h-[38px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-85"
+                    style={{ backgroundColor: palette.accentSoft, color: palette.accent }}
+                  >
+                    <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>{uploading ? 'กำลังย่อขนาด...' : 'อัปโหลดรูปจากเครื่อง'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUploadProfileImg}
+                      className="sr-only"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleResetLogo}
+                    className="inline-flex min-h-[38px] items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-85"
+                    style={{
+                      backgroundColor: palette.bg,
+                      border: `1px solid ${palette.cardBorder}`,
+                      color: palette.text,
+                    }}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>ใช้รูปเริ่มต้น</span>
+                  </button>
+                </div>
+
+                <p className="text-[11px]" style={{ color: palette.textMuted }}>
+                  {isDataUri && profileImage !== DEFAULT_AVATAR_SVG
+                    ? 'ใช้รูปที่อัปโหลดแล้ว (ย่อขนาด ≤180×180px WebP/JPEG อัตโนมัติ)'
+                    : 'ย่อขนาดอัปโหลดสูงสุด 180×180px (WebP/JPEG 0.75) เพื่อซิงก์ไว'}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="profile-logo-url-input"
+                className="mb-1.5 block text-xs font-semibold"
+                style={{ color: palette.text }}
+              >
+                วางลิงก์รูปภาพ (Image URL)
+              </label>
+              <input
+                id="profile-logo-url-input"
+                type="text"
+                value={isDataUri ? '' : profileImage}
+                onChange={(e) => setProfileImage(e.target.value)}
+                placeholder="https://example.com/logo.jpg (ใช้ลิงก์รูปตรงจากเว็บ)"
+                className="w-full rounded-full px-4 py-2.5 text-xs outline-none focus:ring-2 sm:text-sm"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  border: `1px solid ${palette.cardBorder}`,
+                  color: palette.text,
+                }}
+              />
             </div>
           </div>
 
